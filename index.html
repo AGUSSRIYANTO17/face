@@ -435,6 +435,9 @@
                         <div id="enrollment-mode-banner" class="absolute inset-x-0 bottom-0 hidden z-30 bg-indigo-700/95 text-white text-[11px] font-bold px-3 py-2 text-center">
                             <i class="fa-solid fa-id-card-clip"></i> Mode Pendaftaran Wajah &mdash; Sampel <span id="enrollment-sample-count">0</span>/3
                         </div>
+                        <div id="auto-attendance-banner" class="absolute inset-x-0 top-0 hidden z-30 bg-emerald-600/95 text-white text-[11px] font-bold px-3 py-2 text-center">
+                            <i class="fa-solid fa-bolt"></i> <span id="auto-attendance-text">Absen Otomatis Aktif &mdash; Arahkan wajah ke kamera</span>
+                        </div>
 
                         <!-- Panel Loading / Error / Panduan Izin Kamera -->
                         <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white p-6 gap-3 z-10 text-center">
@@ -449,21 +452,29 @@
                         <div class="absolute top-0 left-0 w-full h-0.5 bg-indigo-500/50 shadow-lg shadow-indigo-400 opacity-60 animate-bounce pointer-events-none"></div>
                     </div>
 
+                    <label class="flex items-center justify-between gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-100 cursor-pointer select-none">
+                        <div class="min-w-0">
+                            <p class="text-xs font-bold text-emerald-700"><i class="fa-solid fa-bolt"></i> Absen Otomatis dengan Face Recognition</p>
+                            <p class="text-[10px] text-emerald-600">Jika aktif, presensi terkirim otomatis begitu wajah terdaftar Anda dikenali kamera &mdash; tanpa perlu tekan tombol.</p>
+                        </div>
+                        <input type="checkbox" id="toggle-auto-attendance" checked onchange="setAutoAttendanceMode(this.checked)" class="shrink-0 w-5 h-5 accent-emerald-600">
+                    </label>
+
                     <!-- Tombol aksi ditempatkan langsung di bawah frame kamera agar mudah dijangkau saat selfie -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
                         <button type="button" id="btn-capture-photo" onclick="captureAttendancePhoto()" disabled class="w-full bg-slate-200 text-slate-400 py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-not-allowed">
-                            <i class="fa-solid fa-camera"></i> Ambil Foto
+                            <i class="fa-solid fa-camera"></i> Ambil Foto Manual
                         </button>
                         <button type="submit" form="form-presensi" id="btn-submit-presensi" disabled class="w-full bg-slate-200 text-slate-400 py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-not-allowed">
                             <i class="fa-solid fa-paper-plane"></i> Kirim Absen
                         </button>
                     </div>
-                    <p class="text-[10px] text-center text-slate-400 -mt-1"><i class="fa-solid fa-circle-info"></i> Ambil foto terlebih dahulu. Hasil foto tampil di frame kamera, lalu tombol Kirim Absen akan aktif.</p>
+                    <p class="text-[10px] text-center text-slate-400 -mt-1"><i class="fa-solid fa-circle-info"></i> Kalau Absen Otomatis nonaktif atau wajah belum terdaftar, gunakan tombol "Ambil Foto Manual" lalu "Kirim Absen".</p>
 
                     <div class="flex items-center justify-between gap-2 mt-1 p-3 rounded-xl bg-indigo-50 border border-indigo-100">
                         <div class="min-w-0">
                             <p class="text-xs font-bold text-indigo-700"><i class="fa-solid fa-user-shield"></i> Wajah Referensi Presensi</p>
-                            <p class="text-[10px] text-indigo-500">Wajib didaftarkan sekali agar sistem bisa memverifikasi identitas Anda secara otomatis.</p>
+                            <p class="text-[10px] text-indigo-500">Wajib didaftarkan sekali agar sistem bisa mengenali & absen otomatis untuk Anda.</p>
                         </div>
                         <button type="button" id="btn-toggle-enrollment" onclick="toggleFaceEnrollmentMode()" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5">
                             <i class="fa-solid fa-id-card-clip"></i> Daftarkan Wajah
@@ -1138,8 +1149,8 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbwlEQCtc0MTHgq_mY85HrbQiDiymuXiKTfUzhBnjjIaadyWdkea572f9jv3mhHLvObw/exec";
-        const ATTENDANCE_RADIUS_METERS = 20000000;
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbybFJbAou3cHcY2M7SL4nUmqI6Z9BaEh2dS8UYR-mDs2WgvPK9XjKJNHOOioPdm5fBi/exec";
+        const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
         let currentSession = null; 
@@ -1389,6 +1400,14 @@
         let faceEnrollmentMode = false;
         let faceEnrollmentSamples = [];      // kumpulan descriptor sampel saat mode pendaftaran
 
+        // ---------- ABSEN OTOMATIS (Auto Face Recognition Attendance) ----------
+        let autoAttendanceInterval = null;
+        let faceMatchStreak = 0;
+        let isAutoAttendanceTriggered = false;   // supaya hanya trigger 1x sampai berhasil/kondisi berubah
+        let autoAttendanceModeEnabled = true;    // guru bisa nonaktifkan & pakai mode manual bila mau
+        const AUTO_ATTENDANCE_STREAK_REQUIRED = 3;  // jumlah deteksi cocok berturut-turut sebelum auto kirim
+        const AUTO_RECOGNITION_INTERVAL_MS = 700;   // jeda antar pengecekan wajah (ms)
+
         const faceRecognitionStatusBadge = document.getElementById('face-recognition-status');
         const faceMatchBadge = document.getElementById('face-match-badge');
         const enrollmentModeBanner = document.getElementById('enrollment-mode-banner');
@@ -1544,6 +1563,7 @@
             faceEnrollmentSamples = [];
 
             if (faceEnrollmentMode) {
+                stopAutoAttendanceLoop();
                 if (globalBase64Photo) clearCapturedPhoto(false);
                 updateFaceMatchBadge('none');
                 if (enrollmentModeBanner) enrollmentModeBanner.classList.remove('hidden');
@@ -1565,6 +1585,7 @@
                 clearCapturedPhoto(false);
                 updateFaceMatchBadge('none');
                 updatePresensiButtonState();
+                startAutoAttendanceLoop();
             }
         }
 
@@ -1634,6 +1655,7 @@
                 updateFaceMatchBadge('none');
                 if (capturePhotoBtn) capturePhotoBtn.disabled = false;
                 updatePresensiButtonState();
+                startAutoAttendanceLoop();
             };
 
             if (IS_PREVIEW) {
@@ -1663,6 +1685,158 @@
                 }
             } catch (err) {
                 finish(false, 'Koneksi ke server gagal saat menyimpan wajah referensi: ' + err);
+            }
+        }
+
+        // ---------- ABSEN OTOMATIS (Auto Face Recognition Attendance) ----------
+
+        function setAutoAttendanceMode(enabled) {
+            autoAttendanceModeEnabled = enabled;
+            isAutoAttendanceTriggered = false;
+            faceMatchStreak = 0;
+            if (enabled && cameraActive) {
+                startAutoAttendanceLoop();
+            } else {
+                stopAutoAttendanceLoop();
+            }
+            updateAutoAttendanceBanner('idle');
+        }
+
+        function startAutoAttendanceLoop() {
+            if (autoAttendanceInterval) return;
+            if (!autoAttendanceModeEnabled) return;
+            faceMatchStreak = 0;
+            isAutoAttendanceTriggered = false;
+            updateAutoAttendanceBanner('idle');
+            autoAttendanceInterval = setInterval(autoFaceRecognitionTick, AUTO_RECOGNITION_INTERVAL_MS);
+        }
+
+        function stopAutoAttendanceLoop() {
+            if (autoAttendanceInterval) {
+                clearInterval(autoAttendanceInterval);
+                autoAttendanceInterval = null;
+            }
+            const banner = document.getElementById('auto-attendance-banner');
+            if (banner) banner.classList.add('hidden');
+        }
+
+        function updateAutoAttendanceBanner(state, extra) {
+            const banner = document.getElementById('auto-attendance-banner');
+            const textEl = document.getElementById('auto-attendance-text');
+            if (!banner || !textEl) return;
+
+            if (!autoAttendanceModeEnabled || faceEnrollmentMode) {
+                banner.classList.add('hidden');
+                return;
+            }
+
+            banner.classList.remove('hidden');
+
+            if (state === 'no-reference') {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-amber-500/95 text-white text-[11px] font-bold px-3 py-2 text-center';
+                textEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Wajah belum didaftarkan — absen otomatis nonaktif, daftarkan wajah dulu';
+            } else if (state === 'out-of-range') {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-amber-500/95 text-white text-[11px] font-bold px-3 py-2 text-center';
+                textEl.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Di luar radius lokasi sekolah, absen otomatis ditunda';
+            } else if (state === 'no-face') {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-emerald-600/95 text-white text-[11px] font-bold px-3 py-2 text-center';
+                textEl.innerHTML = '<i class="fa-solid fa-face-viewfinder"></i> Absen Otomatis Aktif — arahkan wajah ke kamera';
+            } else if (state === 'matching') {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-indigo-600/95 text-white text-[11px] font-bold px-3 py-2 text-center animate-pulse';
+                textEl.innerHTML = `<i class="fa-solid fa-fingerprint"></i> Wajah dikenali... (${extra}/${AUTO_ATTENDANCE_STREAK_REQUIRED})`;
+            } else if (state === 'mismatch') {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-rose-600/95 text-white text-[11px] font-bold px-3 py-2 text-center';
+                textEl.innerHTML = '<i class="fa-solid fa-user-xmark"></i> Wajah tidak dikenali sebagai Anda';
+            } else if (state === 'submitting') {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-emerald-600/95 text-white text-[11px] font-bold px-3 py-2 text-center animate-pulse';
+                textEl.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Wajah cocok! Mengirim absen otomatis...';
+            } else if (state === 'done') {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-emerald-600/95 text-white text-[11px] font-bold px-3 py-2 text-center';
+                textEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Absen otomatis berhasil dikirim';
+            } else {
+                banner.className = 'absolute inset-x-0 top-0 z-30 bg-emerald-600/95 text-white text-[11px] font-bold px-3 py-2 text-center';
+                textEl.innerHTML = '<i class="fa-solid fa-bolt"></i> Absen Otomatis Aktif — arahkan wajah ke kamera';
+            }
+        }
+
+        // Dipanggil berulang (setInterval) selama kamera aktif untuk mengenali wajah & auto-kirim absen.
+        async function autoFaceRecognitionTick() {
+            if (!autoAttendanceModeEnabled || !cameraActive || faceEnrollmentMode) return;
+            if (isAutoAttendanceTriggered || isSubmittingPresensi || isVerifyingFace) return;
+
+            if (!enrolledFaceDescriptor) {
+                updateAutoAttendanceBanner('no-reference');
+                return;
+            }
+            if (checkTodayAttendanceStatus()) {
+                stopAutoAttendanceLoop();
+                return;
+            }
+            if (!isWithinAttendanceRadius) {
+                faceMatchStreak = 0;
+                updateAutoAttendanceBanner('out-of-range');
+                return;
+            }
+            if (!isFaceDetected) {
+                faceMatchStreak = 0;
+                updateAutoAttendanceBanner('no-face');
+                return;
+            }
+
+            try {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = videoElement.videoWidth || 640;
+                tempCanvas.height = videoElement.videoHeight || 480;
+                const ctx = tempCanvas.getContext('2d');
+                ctx.translate(tempCanvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
+
+                const descriptor = await computeLiveFaceDescriptor(tempCanvas);
+                if (!descriptor) {
+                    faceMatchStreak = 0;
+                    updateAutoAttendanceBanner('no-face');
+                    return;
+                }
+
+                const distance = euclideanFaceDistance(descriptor, enrolledFaceDescriptor);
+                const isMatch = distance <= FACE_MATCH_THRESHOLD;
+
+                if (isMatch) {
+                    faceMatchStreak++;
+                    updateAutoAttendanceBanner('matching', faceMatchStreak);
+                    if (faceMatchStreak >= AUTO_ATTENDANCE_STREAK_REQUIRED) {
+                        isAutoAttendanceTriggered = true;
+                        updateAutoAttendanceBanner('submitting');
+                        await triggerAutoAttendance();
+                    }
+                } else {
+                    faceMatchStreak = 0;
+                    updateAutoAttendanceBanner('mismatch');
+                }
+            } catch (err) {
+                console.error('Auto face recognition tick error:', err);
+            }
+        }
+
+        // Menjalankan capture foto + verifikasi (pakai fungsi manual yang sudah ada) lalu auto-submit form.
+        async function triggerAutoAttendance() {
+            await captureAttendancePhoto();
+
+            if (globalFaceMatch === true && globalBase64Photo) {
+                const form = document.getElementById('form-presensi');
+                if (form) {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.dispatchEvent(new Event('submit', { cancelable: true }));
+                    }
+                }
+                updateAutoAttendanceBanner('done');
+            } else {
+                // Verifikasi ulang gagal (mis. pencahayaan berubah) -> reset supaya bisa dicoba lagi
+                isAutoAttendanceTriggered = false;
+                faceMatchStreak = 0;
             }
         }
 
@@ -2539,6 +2713,7 @@ function focusAdminDeviceMarker(index) {
                     videoElement.srcObject = stream;
                     cameraContainer.classList.add('hidden');
                     cameraActive = true;
+                    startAutoAttendanceLoop();
 
                     if (!cameraObj) {
                         cameraObj = new Camera(videoElement, {
@@ -2603,6 +2778,9 @@ function focusAdminDeviceMarker(index) {
         function stopCameraSystem() {
             if (!cameraActive) return;
             cameraActive = false;
+            stopAutoAttendanceLoop();
+            isAutoAttendanceTriggered = false;
+            faceMatchStreak = 0;
             
             if (videoElement.srcObject) {
                 videoElement.srcObject.getTracks().forEach(track => track.stop());
@@ -2893,6 +3071,8 @@ function focusAdminDeviceMarker(index) {
 
             input.checked = true;
             clearCapturedPhoto(false);
+            isAutoAttendanceTriggered = false;
+            faceMatchStreak = 0;
             updatePresensiButtonState();
         }
 
