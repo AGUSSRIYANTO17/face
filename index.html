@@ -471,16 +471,6 @@
                     </div>
                     <p class="text-[10px] text-center text-slate-400 -mt-1"><i class="fa-solid fa-circle-info"></i> Kalau Absen Otomatis nonaktif atau wajah belum terdaftar, gunakan tombol "Ambil Foto Manual" lalu "Kirim Absen".</p>
 
-                    <div class="flex items-center justify-between gap-2 mt-1 p-3 rounded-xl bg-indigo-50 border border-indigo-100">
-                        <div class="min-w-0">
-                            <p class="text-xs font-bold text-indigo-700"><i class="fa-solid fa-user-shield"></i> Wajah Referensi Presensi</p>
-                            <p class="text-[10px] text-indigo-500">Wajib didaftarkan sekali agar sistem bisa mengenali & absen otomatis untuk Anda.</p>
-                        </div>
-                        <button type="button" id="btn-toggle-enrollment" onclick="toggleFaceEnrollmentMode()" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5">
-                            <i class="fa-solid fa-id-card-clip"></i> Daftarkan Wajah
-                        </button>
-                    </div>
-
                 </div>
 
                 <!-- Right Side: Attendance Form -->
@@ -896,6 +886,93 @@
         </div>
     </div>
 
+    <!-- ADMIN ONLY: KELOLA WAJAH REFERENSI GURU (FACE RECOGNITION) -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden" id="admin-face-panel">
+        <div class="p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-id-card-clip text-lg"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Kelola Wajah Referensi Guru (Face Recognition)</h3>
+                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">Admin dapat mendaftarkan, memperbarui, atau menghapus data wajah referensi guru langsung dari sini memakai kamera perangkat Admin — cocok saat guru datang langsung ke ruang admin/TU.</p>
+                </div>
+            </div>
+            <button type="button" onclick="loadAdminFaceManagementPanel(true)" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 transition-all shrink-0">
+                <i class="fa-solid fa-rotate"></i> Muat / Refresh Data
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.4fr)]">
+            <div class="p-5 border-b xl:border-b-0 xl:border-r border-slate-100 flex flex-col gap-3">
+                <div class="flex flex-col gap-1">
+                    <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Pilih Guru</label>
+                    <select id="admin-face-select-user" onchange="onAdminFaceUserSelected()" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500">
+                        <option value="">-- Pilih guru --</option>
+                    </select>
+                </div>
+
+                <div class="relative w-full aspect-video bg-slate-950 rounded-xl overflow-hidden border-2 border-slate-200">
+                    <video id="admin-face-video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover scale-x-[-1] hidden"></video>
+                    <div id="admin-face-camera-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-white/70 gap-2 text-center p-4">
+                        <i class="fa-solid fa-camera text-3xl"></i>
+                        <p class="text-[11px] font-semibold">Kamera Admin belum aktif</p>
+                    </div>
+                    <div id="admin-face-sample-badge" class="absolute bottom-2 left-2 hidden px-3 py-1.5 rounded-full bg-indigo-600/90 text-white text-[11px] font-bold z-10">
+                        Sampel: 0/3
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button type="button" id="btn-admin-face-camera" onclick="toggleAdminFaceCamera()" class="w-full bg-slate-800 hover:bg-black text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all">
+                        <i class="fa-solid fa-video"></i> Nyalakan Kamera
+                    </button>
+                    <button type="button" id="btn-admin-face-capture" onclick="captureAdminFaceSample()" disabled class="w-full bg-slate-200 text-slate-400 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-not-allowed transition-all">
+                        <i class="fa-solid fa-camera"></i> Ambil Sampel
+                    </button>
+                </div>
+                <p class="text-[10px] text-slate-400 leading-relaxed"><i class="fa-solid fa-circle-info"></i> Pilih guru dahulu → nyalakan kamera → arahkan wajah guru tersebut ke kamera → ambil 3 sampel (posisi sedikit berbeda tiap sampel). Otomatis tersimpan setelah sampel ke-3.</p>
+
+                <div class="flex items-center gap-2 my-0.5">
+                    <div class="flex-1 h-px bg-slate-100"></div>
+                    <span class="text-[10px] font-bold text-slate-300 uppercase tracking-wider">atau</span>
+                    <div class="flex-1 h-px bg-slate-100"></div>
+                </div>
+
+                <div class="flex flex-col gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                    <p class="text-xs font-bold text-slate-600"><i class="fa-solid fa-image"></i> Referensi dari Foto yang Sudah Ada</p>
+                    <p class="text-[10px] text-slate-400">Tidak perlu guru hadir langsung — pakai 1-3 foto wajah jelas yang sudah ada (mis. foto formal/KTP), lalu proses di sini.</p>
+                    <input type="file" id="admin-face-upload-input" accept="image/*" multiple class="w-full text-[10px] file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700 file:font-bold text-slate-500">
+                    <button type="button" onclick="processAdminFaceUploadedPhotos(this)" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all">
+                        <i class="fa-solid fa-upload"></i> Proses Foto Terpilih
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-5">
+                <div class="flex items-center justify-between gap-2 mb-3">
+                    <h4 class="text-sm font-extrabold text-slate-900">Status Wajah Referensi Semua Guru</h4>
+                    <span id="admin-face-status-count" class="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1.5 rounded-full">0 Guru</span>
+                </div>
+                <div class="overflow-x-auto max-h-[380px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="sticky top-0 bg-white z-10">
+                            <tr class="text-slate-500 text-[11px] font-bold uppercase border-b border-slate-100">
+                                <th class="py-2 pr-3">Guru / NIP</th>
+                                <th class="py-2 pr-3">Status</th>
+                                <th class="py-2 pr-3">Diperbarui</th>
+                                <th class="py-2 pr-3">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-face-status-body" class="text-xs divide-y divide-slate-100">
+                            <tr><td colspan="4" class="py-8 text-center text-slate-400">Klik "Muat / Refresh Data" untuk memuat status wajah referensi tiap guru.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-5">
         <div class="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
             <div class="flex flex-col gap-3">
@@ -1099,6 +1176,117 @@
             </table>
         </div>
     </div>
+
+    <!-- ==================== LAPORAN KEHADIRAN GURU BULANAN (FORMAT RESMI) ==================== -->
+    <div id="admin-monthly-teacher-report" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><i class="fa-solid fa-file-signature text-lg"></i></div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Laporan Kehadiran Guru Bulanan (Format Resmi)</h3>
+                    <p class="text-xs text-slate-500 mt-1">Cetak rekap kehadiran satu guru untuk satu bulan, lengkap dengan rekapitulasi dan kolom tanda tangan Kepala Sekolah.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 border-b border-slate-100 bg-slate-50/60">
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Guru</label>
+                <select id="monthly-report-teacher" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+                    <option value="">Memuat daftar guru...</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Bulan</label>
+                <select id="monthly-report-bulan" onchange="this.dataset.touched='1'" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+                    <option value="0">Januari</option>
+                    <option value="1">Februari</option>
+                    <option value="2">Maret</option>
+                    <option value="3">April</option>
+                    <option value="4">Mei</option>
+                    <option value="5">Juni</option>
+                    <option value="6">Juli</option>
+                    <option value="7">Agustus</option>
+                    <option value="8">September</option>
+                    <option value="9">Oktober</option>
+                    <option value="10">November</option>
+                    <option value="11">Desember</option>
+                </select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Tahun</label>
+                <input type="number" id="monthly-report-tahun" min="2020" max="2100" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Batas Jam Masuk (Terlambat setelah)</label>
+                <input type="time" id="monthly-report-batas-masuk" value="07:00" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+            </div>
+        </div>
+
+        <div class="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 border-b border-slate-100">
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Jabatan</label>
+                <input type="text" id="monthly-report-jabatan" placeholder="Contoh: Guru Mapel" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Mata Pelajaran</label>
+                <input type="text" id="monthly-report-mapel" placeholder="Contoh: Matematika" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Nama Kepala Sekolah</label>
+                <input type="text" id="monthly-report-kepsek-nama" placeholder="Nama lengkap Kepala Sekolah" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">NIP/NUPTK Kepala Sekolah</label>
+                <input type="text" id="monthly-report-kepsek-nip" placeholder="NIP/NUPTK Kepala Sekolah" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+            </div>
+        </div>
+
+        <div class="p-5 flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50/60">
+            <button type="button" onclick="previewMonthlyTeacherReport(true)" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 transition-all">
+                <i class="fa-solid fa-eye"></i> Tampilkan Laporan
+            </button>
+            <button type="button" onclick="printMonthlyTeacherReport()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center gap-2 transition-all">
+                <i class="fa-solid fa-print"></i> Cetak / Simpan PDF
+            </button>
+            <span id="monthly-report-summary-label" class="text-[11px] text-slate-500 font-semibold"></span>
+        </div>
+
+        <div id="monthly-report-preview-wrapper" class="overflow-x-auto hidden">
+            <table class="w-full text-left border-collapse whitespace-nowrap">
+                <thead>
+                    <tr class="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase border-b border-slate-100">
+                        <th class="py-3 px-4">No</th>
+                        <th class="py-3 px-4">Tanggal</th>
+                        <th class="py-3 px-4">Hari</th>
+                        <th class="py-3 px-4">Jam Masuk</th>
+                        <th class="py-3 px-4">Jam Pulang</th>
+                        <th class="py-3 px-4 text-center">Status</th>
+                        <th class="py-3 px-4 text-center">Terlambat (Menit)</th>
+                        <th class="py-3 px-4">Keterangan</th>
+                    </tr>
+                </thead>
+                <tbody id="monthly-report-table-body" class="text-xs divide-y divide-slate-100">
+                    <tr><td colspan="8" class="py-10 text-center text-slate-400">Pilih guru, bulan, dan tahun lalu klik "Tampilkan Laporan".</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="monthly-report-recap-wrapper" class="p-5 hidden grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 bg-slate-50/60">
+            <div class="bg-white rounded-xl border border-slate-100 p-4">
+                <div class="text-xs font-bold text-slate-800 mb-2"><i class="fa-solid fa-list-check mr-1 text-indigo-600"></i> B. Rekapitulasi</div>
+                <table class="w-full text-xs" id="monthly-report-recap-b"></table>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-100 p-4">
+                <div class="text-xs font-bold text-slate-800 mb-2"><i class="fa-regular fa-clock mr-1 text-indigo-600"></i> C. Rekap Waktu</div>
+                <table class="w-full text-xs" id="monthly-report-recap-c"></table>
+            </div>
+        </div>
+
+        <div class="px-5 py-3 bg-indigo-50/60 border-t border-indigo-100 text-[10px] text-indigo-800 leading-relaxed">
+            <i class="fa-solid fa-circle-info mr-1"></i> H = Hadir tepat waktu, T = Terlambat (tetap dihitung Hadir), S = Sakit, I = Izin, D = Tugas Dinas Luar, TS = Tugas Sekolah, A = Alpa/Tanpa Keterangan. Status bersumber dari data presensi kamera dan keterangan resmi (Izin/Sakit/Tugas) yang sudah tercatat pada sistem. "Tidak melakukan absensi" mengikuti jumlah Alpa pada bulan tersebut.
+        </div>
+    </div>
 </section>
 
 <section id="tab-ganti-password" class="tab-content hidden max-w-md mx-auto w-full">
@@ -1149,7 +1337,7 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbxv0Y0b81EUO-h_99i0g5YiGHG5dHg5lmPUaBrboLegfR7aYsIQxTRXfDrPv4uUG6I/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbx5Y1xij5f0-MN8BD8Wrn4MT16cTzAhWvxJ74KUr_AF02orArMnKsPWydc-fhedITR73Q/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
@@ -1480,6 +1668,46 @@
             return avg;
         }
 
+        // ---------- REFERENSI WAJAH DARI FOTO YANG SUDAH ADA (upload file) ----------
+        function loadImageElement(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('Gagal memuat gambar'));
+                img.src = src;
+            });
+        }
+
+        // Menghitung descriptor wajah dari sekumpulan file foto (upload dari perangkat).
+        // Mengembalikan { descriptors: [...], failed: n, total: n }. Foto yang wajahnya
+        // tidak terbaca jelas akan dilewati (tidak menggagalkan foto lain).
+        async function computeDescriptorsFromImageFiles(fileList) {
+            const files = Array.from(fileList || []);
+            const descriptors = [];
+            let failed = 0;
+
+            for (const file of files) {
+                let objectUrl = null;
+                try {
+                    objectUrl = URL.createObjectURL(file);
+                    const img = await loadImageElement(objectUrl);
+                    const descriptor = await computeLiveFaceDescriptor(img);
+                    if (descriptor) {
+                        descriptors.push(descriptor);
+                    } else {
+                        failed++;
+                    }
+                } catch (err) {
+                    console.error('Gagal memproses foto wajah:', err);
+                    failed++;
+                } finally {
+                    if (objectUrl) URL.revokeObjectURL(objectUrl);
+                }
+            }
+
+            return { descriptors, failed, total: files.length };
+        }
+
         // Mengambil wajah referensi guru yang sedang login dari backend (dipanggil setelah login).
         async function fetchEnrolledFaceDescriptor() {
             if (!currentSession || !currentSession.nip) return;
@@ -1548,8 +1776,56 @@
             } else if (state === 'unregistered') {
                 faceMatchBadge.className = 'absolute bottom-3 left-3 z-30 px-3 py-1.5 rounded-full bg-amber-500/95 text-white text-xs font-bold shadow-lg';
                 faceMatchBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Belum Ada Wajah Referensi';
+            } else if (state === 'auto-saving') {
+                faceMatchBadge.className = 'absolute bottom-3 left-3 z-30 px-3 py-1.5 rounded-full bg-indigo-600/95 text-white text-xs font-bold shadow-lg animate-pulse';
+                faceMatchBadge.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Menyimpan Wajah Referensi Presensi...';
+            } else if (state === 'auto-registered') {
+                faceMatchBadge.className = 'absolute bottom-3 left-3 z-30 px-3 py-1.5 rounded-full bg-emerald-600/95 text-white text-xs font-bold shadow-lg';
+                faceMatchBadge.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Wajah Referensi Presensi Tersimpan';
             } else {
                 faceMatchBadge.classList.add('hidden');
+            }
+        }
+
+        // Melatih/memperbarui "Wajah Referensi Presensi" milik guru yang login memakai
+        // descriptor dari SETIAP foto presensi (kamera live) yang berhasil diverifikasi.
+        // - Jika guru belum punya referensi sama sekali -> foto ini jadi referensi awal.
+        // - Jika sudah punya & wajah cocok -> foto ini ditambahkan sebagai sampel data
+        //   latih baru (server merata-ratakan dengan referensi lama), supaya referensi
+        //   makin akurat mengikuti kondisi wajah guru terkini.
+        // Pendaftaran/pengelolaan manual (upload foto, dsb.) hanya tersedia di Menu Admin.
+        async function trainFaceReferenceFromAttendance_(descriptor) {
+            if (IS_PREVIEW) {
+                try { localStorage.setItem('demo_face_descriptor_' + currentSession.nip, JSON.stringify(Array.from(descriptor))); } catch (ignore) {}
+                enrolledFaceDescriptor = descriptor;
+                enrolledFaceChecked = true;
+                updateFaceEnrollmentBadge();
+                return { ok: true };
+            }
+            try {
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        action: 'simpanFaceDescriptor',
+                        data: JSON.stringify({
+                            nip: currentSession.nip,
+                            nama: currentSession.nama,
+                            descriptor: Array.from(descriptor),
+                            mode: 'train'
+                        })
+                    })
+                });
+                const resJson = await res.json();
+                if (resJson && resJson.success) {
+                    enrolledFaceDescriptor = descriptor;
+                    enrolledFaceChecked = true;
+                    updateFaceEnrollmentBadge();
+                    return { ok: true };
+                }
+                return { ok: false, message: (resJson && resJson.message) || 'Gagal menyimpan data wajah referensi ke server.' };
+            } catch (err) {
+                return { ok: false, message: String(err) };
             }
         }
 
@@ -1686,6 +1962,31 @@
             } catch (err) {
                 finish(false, 'Koneksi ke server gagal saat menyimpan wajah referensi: ' + err);
             }
+        }
+
+        // Memproses foto yang sudah ada (upload dari HP guru) sebagai wajah referensi, tanpa buka kamera.
+        async function processSelfFaceUploadedPhotos(input) {
+            if (!input.files || input.files.length === 0) return;
+            if (!currentSession || !currentSession.nip) {
+                showToast('Sesi login tidak ditemukan, silakan login ulang.', 'error');
+                return;
+            }
+
+            showToast('Memproses foto yang dipilih...', 'info');
+            const { descriptors, failed, total } = await computeDescriptorsFromImageFiles(input.files);
+            input.value = '';
+
+            if (descriptors.length === 0) {
+                showDialog('Wajah Tidak Terbaca', `Tidak ada wajah yang berhasil dikenali dari ${total} foto yang dipilih. Gunakan foto yang lebih jelas, pencahayaan cukup, close-up, dan wajah menghadap ke depan.`, 'error');
+                return;
+            }
+
+            if (failed > 0) {
+                showToast(`${descriptors.length} dari ${total} foto berhasil dikenali wajahnya, sisanya dilewati.`, 'info');
+            }
+
+            faceEnrollmentSamples = descriptors;
+            await finalizeFaceEnrollment();
         }
 
         // ---------- ABSEN OTOMATIS (Auto Face Recognition Attendance) ----------
@@ -1838,6 +2139,338 @@
                 isAutoAttendanceTriggered = false;
                 faceMatchStreak = 0;
             }
+        }
+
+        // ---------- ADMIN: KELOLA WAJAH REFERENSI GURU ----------
+        let adminFaceCameraActive = false;
+        let adminFaceStream = null;
+        let adminFaceSelectedNip = '';
+        let adminFaceSelectedNama = '';
+        let adminFaceSamples = [];
+        let adminFaceStatusMap = {}; // { nip: { samples, updated_at } }
+        const adminFaceVideoEl = () => document.getElementById('admin-face-video');
+
+        function loadAdminFaceManagementPanel(showLoadingToast) {
+            if (showLoadingToast) showToast('Memuat data guru & status wajah referensi...', 'info');
+            fetchUsersFromGAS();
+
+            if (IS_PREVIEW) {
+                adminFaceStatusMap = {};
+                (mockUsersDb || []).forEach(u => {
+                    try {
+                        const raw = localStorage.getItem('demo_face_descriptor_' + u.nip);
+                        if (raw) adminFaceStatusMap[u.nip] = { samples: 3, updated_at: 'Mode Demo (lokal)' };
+                    } catch (ignore) {}
+                });
+                renderAdminFaceUserSelect();
+                renderAdminFaceStatusTable();
+                return;
+            }
+
+            fetch(`${GAS_URL}?action=getFaceStatusAll&_=${Date.now()}`, { cache: 'no-store' })
+                .then(res => res.json())
+                .then(resJson => {
+                    adminFaceStatusMap = {};
+                    if (resJson && resJson.success && Array.isArray(resJson.data)) {
+                        resJson.data.forEach(row => {
+                            adminFaceStatusMap[String(row.nip)] = { samples: row.samples, updated_at: row.updated_at };
+                        });
+                    }
+                    renderAdminFaceUserSelect();
+                    renderAdminFaceStatusTable();
+                })
+                .catch(err => {
+                    console.error('Gagal memuat status wajah referensi:', err);
+                    showToast('Gagal memuat status wajah referensi dari server.', 'error');
+                    renderAdminFaceUserSelect();
+                    renderAdminFaceStatusTable();
+                });
+        }
+
+        function renderAdminFaceUserSelect() {
+            const select = document.getElementById('admin-face-select-user');
+            if (!select) return;
+            const currentVal = select.value;
+            const guruList = (mockUsersDb || []).filter(u => String(u.role || '').toLowerCase() !== 'admin');
+            select.innerHTML = '<option value="">-- Pilih guru --</option>' +
+                guruList.map(u => `<option value="${u.nip}" data-nama="${(u.nama || '').replace(/"/g, '&quot;')}">${u.nama} (${u.nip})</option>`).join('');
+            if (currentVal) select.value = currentVal;
+        }
+
+        function renderAdminFaceStatusTable() {
+            const tbody = document.getElementById('admin-face-status-body');
+            const countEl = document.getElementById('admin-face-status-count');
+            if (!tbody) return;
+            const guruList = (mockUsersDb || []).filter(u => String(u.role || '').toLowerCase() !== 'admin');
+            if (countEl) countEl.innerText = `${guruList.length} Guru`;
+
+            if (guruList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="py-8 text-center text-slate-400">Belum ada data guru.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = guruList.map(u => {
+                const status = adminFaceStatusMap[String(u.nip)];
+                const badge = status
+                    ? `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold"><i class="fa-solid fa-circle-check"></i> Terdaftar</span>`
+                    : `<span class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold"><i class="fa-solid fa-triangle-exclamation"></i> Belum</span>`;
+                const updated = status ? (status.updated_at || '-') : '-';
+                return `
+                    <tr>
+                        <td class="py-2.5 pr-3">
+                            <div class="font-bold text-slate-800">${u.nama}</div>
+                            <div class="text-slate-400">${u.nip}</div>
+                        </td>
+                        <td class="py-2.5 pr-3">${badge}</td>
+                        <td class="py-2.5 pr-3 text-slate-500">${updated}</td>
+                        <td class="py-2.5 pr-3">
+                            <div class="flex flex-wrap gap-1.5">
+                                <button type="button" onclick="selectAdminFaceUser('${u.nip}')" class="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+                                    <i class="fa-solid fa-camera"></i> ${status ? 'Perbarui' : 'Daftarkan'}
+                                </button>
+                                ${status ? `<button type="button" onclick="deleteAdminFaceReference('${u.nip}', '${(u.nama || '').replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-bold"><i class="fa-solid fa-trash"></i> Hapus</button>` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function selectAdminFaceUser(nip) {
+            const select = document.getElementById('admin-face-select-user');
+            if (select) select.value = nip;
+            onAdminFaceUserSelected();
+            const panel = document.getElementById('admin-face-panel');
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function onAdminFaceUserSelected() {
+            const select = document.getElementById('admin-face-select-user');
+            if (!select || !select.value) {
+                adminFaceSelectedNip = '';
+                adminFaceSelectedNama = '';
+                return;
+            }
+            adminFaceSelectedNip = select.value;
+            adminFaceSelectedNama = select.options[select.selectedIndex].dataset.nama || '';
+            adminFaceSamples = [];
+            updateAdminFaceSampleBadge();
+        }
+
+        async function toggleAdminFaceCamera() {
+            const btn = document.getElementById('btn-admin-face-camera');
+            const video = adminFaceVideoEl();
+            const placeholder = document.getElementById('admin-face-camera-placeholder');
+            const captureBtn = document.getElementById('btn-admin-face-capture');
+
+            if (adminFaceCameraActive) {
+                if (adminFaceStream) adminFaceStream.getTracks().forEach(t => t.stop());
+                adminFaceStream = null;
+                adminFaceCameraActive = false;
+                if (video) { video.classList.add('hidden'); video.srcObject = null; }
+                if (placeholder) placeholder.classList.remove('hidden');
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-video"></i> Nyalakan Kamera';
+                if (captureBtn) {
+                    captureBtn.disabled = true;
+                    captureBtn.className = 'w-full bg-slate-200 text-slate-400 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-not-allowed transition-all';
+                }
+                return;
+            }
+
+            try {
+                adminFaceStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+                if (video) {
+                    video.srcObject = adminFaceStream;
+                    video.classList.remove('hidden');
+                }
+                if (placeholder) placeholder.classList.add('hidden');
+                adminFaceCameraActive = true;
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-video-slash"></i> Matikan Kamera';
+                if (captureBtn) {
+                    captureBtn.disabled = false;
+                    captureBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all';
+                }
+                ensureFaceApiModelsLoaded();
+            } catch (err) {
+                showToast('Gagal mengakses kamera Admin: ' + err, 'error');
+            }
+        }
+
+        function updateAdminFaceSampleBadge() {
+            const badge = document.getElementById('admin-face-sample-badge');
+            if (!badge) return;
+            if (adminFaceSamples.length > 0) {
+                badge.classList.remove('hidden');
+                badge.textContent = `Sampel: ${adminFaceSamples.length}/${FACE_ENROLLMENT_SAMPLE_TARGET}`;
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        async function captureAdminFaceSample() {
+            if (!adminFaceSelectedNip) {
+                showToast('Pilih guru terlebih dahulu sebelum mengambil sampel wajah.', 'error');
+                return;
+            }
+            if (!adminFaceCameraActive) {
+                showToast('Nyalakan kamera Admin terlebih dahulu.', 'error');
+                return;
+            }
+
+            const video = adminFaceVideoEl();
+            const captureBtn = document.getElementById('btn-admin-face-capture');
+            if (captureBtn) captureBtn.disabled = true;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.videoWidth || 640;
+            tempCanvas.height = video.videoHeight || 480;
+            const ctx = tempCanvas.getContext('2d');
+            ctx.translate(tempCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            const descriptor = await computeLiveFaceDescriptor(tempCanvas);
+            if (captureBtn) captureBtn.disabled = false;
+
+            if (!descriptor) {
+                showToast('Wajah belum terbaca jelas. Pastikan pencahayaan cukup & wajah guru menghadap lurus ke kamera.', 'error');
+                return;
+            }
+
+            adminFaceSamples.push(descriptor);
+            updateAdminFaceSampleBadge();
+            showToast(`Sampel ${adminFaceSamples.length}/${FACE_ENROLLMENT_SAMPLE_TARGET} untuk ${adminFaceSelectedNama} berhasil diambil.`, 'success');
+
+            if (adminFaceSamples.length >= FACE_ENROLLMENT_SAMPLE_TARGET) {
+                await finalizeAdminFaceEnrollment();
+            }
+        }
+
+        async function finalizeAdminFaceEnrollment() {
+            const avgDescriptor = averageDescriptors(adminFaceSamples);
+            const nip = adminFaceSelectedNip;
+            const nama = adminFaceSelectedNama;
+            const captureBtn = document.getElementById('btn-admin-face-capture');
+            if (captureBtn) {
+                captureBtn.disabled = true;
+                captureBtn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Menyimpan...';
+            }
+
+            const finish = (ok, message) => {
+                showDialog(ok ? 'Wajah Referensi Tersimpan' : 'Gagal Menyimpan', message, ok ? 'success' : 'error');
+                adminFaceSamples = [];
+                updateAdminFaceSampleBadge();
+                if (captureBtn) {
+                    captureBtn.disabled = false;
+                    captureBtn.innerHTML = '<i class="fa-solid fa-camera"></i> Ambil Sampel';
+                }
+                if (ok) loadAdminFaceManagementPanel(false);
+            };
+
+            if (IS_PREVIEW) {
+                try { localStorage.setItem('demo_face_descriptor_' + nip, JSON.stringify(Array.from(avgDescriptor))); } catch (ignore) {}
+                setTimeout(() => finish(true, `Wajah referensi untuk ${nama} (mode demo, tersimpan lokal) berhasil disimpan.`), 400);
+                return;
+            }
+
+            try {
+                const res = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        action: 'simpanFaceDescriptor',
+                        data: JSON.stringify({
+                            nip: nip,
+                            nama: nama,
+                            descriptor: Array.from(avgDescriptor),
+                            samples: adminFaceSamples.length
+                        })
+                    })
+                });
+                const resJson = await res.json();
+                if (resJson && resJson.success) {
+                    finish(true, `Wajah referensi untuk ${nama} berhasil disimpan/diperbarui oleh Admin.`);
+                } else {
+                    finish(false, resJson.message || 'Gagal menyimpan data wajah referensi ke server.');
+                }
+            } catch (err) {
+                finish(false, 'Koneksi ke server gagal saat menyimpan wajah referensi: ' + err);
+            }
+        }
+
+        // Memproses foto yang sudah ada (upload dari perangkat Admin) sebagai wajah referensi.
+        async function processAdminFaceUploadedPhotos(btn) {
+            if (!adminFaceSelectedNip) {
+                showToast('Pilih guru terlebih dahulu sebelum memproses foto.', 'error');
+                return;
+            }
+            const input = document.getElementById('admin-face-upload-input');
+            if (!input || !input.files || input.files.length === 0) {
+                showToast('Pilih minimal satu foto terlebih dahulu.', 'error');
+                return;
+            }
+
+            const originalHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Memproses Foto...';
+            }
+
+            const { descriptors, failed, total } = await computeDescriptorsFromImageFiles(input.files);
+
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+            input.value = '';
+
+            if (descriptors.length === 0) {
+                showDialog('Wajah Tidak Terbaca', `Tidak ada wajah yang berhasil dikenali dari ${total} foto yang dipilih. Gunakan foto yang lebih jelas, pencahayaan cukup, close-up, dan wajah menghadap ke depan.`, 'error');
+                return;
+            }
+
+            if (failed > 0) {
+                showToast(`${descriptors.length} dari ${total} foto berhasil dikenali wajahnya, sisanya dilewati.`, 'info');
+            }
+
+            adminFaceSamples = descriptors;
+            const badge = document.getElementById('admin-face-sample-badge');
+            if (badge) {
+                badge.classList.remove('hidden');
+                badge.textContent = `${descriptors.length} foto diproses`;
+            }
+
+            await finalizeAdminFaceEnrollment();
+        }
+
+        function deleteAdminFaceReference(nip, nama) {
+            if (!confirm(`Hapus wajah referensi milik ${nama} (${nip})? Guru tersebut perlu didaftarkan ulang untuk bisa memakai absen otomatis.`)) return;
+
+            if (IS_PREVIEW) {
+                try { localStorage.removeItem('demo_face_descriptor_' + nip); } catch (ignore) {}
+                showToast('Wajah referensi (mode demo) berhasil dihapus.', 'success');
+                loadAdminFaceManagementPanel(false);
+                return;
+            }
+
+            fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    action: 'hapusFaceDescriptor',
+                    data: JSON.stringify({ nip: nip })
+                })
+            })
+            .then(res => res.json())
+            .then(resJson => {
+                if (resJson && resJson.success) {
+                    showToast('Wajah referensi berhasil dihapus.', 'success');
+                    loadAdminFaceManagementPanel(false);
+                } else {
+                    showToast('Gagal menghapus: ' + (resJson.message || 'Terjadi kesalahan.'), 'error');
+                }
+            })
+            .catch(err => showToast('Koneksi gagal: ' + err, 'error'));
         }
 
         // Custom Toast Notification Maker
@@ -2193,6 +2826,7 @@
                             refreshAdminWaStatus(false);
                             renderAdminTeacherAttendancePanel(false);
                             renderAdminStatusKehadiranPanel();
+                            populateMonthlyTeacherReportTeacherOptions();
                         }
                     } else {
                         showToast("Gagal memuat daftar pengguna dari cloud.", "error");
@@ -2239,8 +2873,11 @@
                 initializeAdminAttendanceReport();
                 refreshAdminWaStatus(false);
                 startAdminDeviceMapMonitoring();
+                loadAdminFaceManagementPanel(false);
+                initializeMonthlyTeacherReport();
             } else {
                 stopAdminDeviceMapMonitoring();
+                if (adminFaceCameraActive) toggleAdminFaceCamera();
             }
             if (tabId === 'dashboard' && currentSession && currentSession.role === 'Admin') {
                 renderAdminTeacherAttendancePanel(false);
@@ -3185,14 +3822,152 @@ function focusAdminDeviceMarker(index) {
                 updateFaceMatchBadge(globalFaceMatch ? 'match' : 'mismatch', distance);
                 if (!globalFaceMatch) {
                     showDialog('Wajah Tidak Cocok', `Wajah pada foto tidak cocok dengan data wajah referensi Anda (skor jarak ${distance.toFixed(3)}, batas maksimal ${FACE_MATCH_THRESHOLD}). Presensi tidak dapat dikirim. Coba ambil ulang foto, atau hubungi admin bila Anda perlu mendaftar ulang wajah.`, 'error');
+                } else {
+                    // Wajah cocok -> foto absen ini ikut dipakai sebagai data latih tambahan
+                    // untuk memperbarui Wajah Referensi Presensi (berjalan diam-diam di background).
+                    trainFaceReferenceFromAttendance_(liveDescriptor).catch(() => {});
                 }
             } else {
+                // Guru ini belum pernah punya Wajah Referensi Presensi -> foto absen live saat
+                // ini otomatis dijadikan referensi awal (data latih pertama), supaya presensi
+                // berikutnya bisa langsung diverifikasi tanpa proses pendaftaran terpisah.
                 globalFaceMatch = null;
-                updateFaceMatchBadge('unregistered');
-                showToast('Anda belum mendaftarkan wajah referensi. Presensi tetap dapat dikirim, tapi segera daftarkan wajah Anda lewat tombol "Daftarkan Wajah".', 'info');
+                updateFaceMatchBadge('auto-saving');
+                updatePresensiButtonState();
+
+                const saveResult = await trainFaceReferenceFromAttendance_(liveDescriptor);
+
+                if (saveResult.ok) {
+                    globalFaceMatch = true;
+                    globalFaceDistance = 0;
+                    updateFaceMatchBadge('auto-registered');
+                    showDialog(
+                        'Wajah Referensi Presensi Tersimpan',
+                        'Karena ini pertama kalinya foto wajah Anda terdeteksi, foto dari kamera saat presensi ini otomatis disimpan sebagai Wajah Referensi Presensi Anda. Mulai presensi berikutnya, sistem akan memverifikasi wajah Anda otomatis memakai foto ini.',
+                        'success'
+                    );
+                } else {
+                    globalFaceMatch = null;
+                    updateFaceMatchBadge('unregistered');
+                    showToast('Gagal menyimpan Wajah Referensi Presensi otomatis (' + (saveResult.message || 'kesalahan tidak diketahui') + '). Presensi tetap dapat dikirim, tapi coba ulangi agar wajah referensi tersimpan.', 'error');
+                }
             }
 
             updatePresensiButtonState();
+        }
+
+        // Absen memakai foto yang sudah ada (upload), bukan dari kamera live.
+        // Tetap memakai referensi wajah yang sudah didaftarkan sebelumnya untuk verifikasi.
+        async function processUploadedAttendancePhoto(input) {
+            if (!input.files || input.files.length === 0) return;
+            const file = input.files[0];
+
+            if (faceEnrollmentMode) {
+                input.value = '';
+                showToast('Selesaikan atau batalkan mode pendaftaran wajah terlebih dahulu.', 'error');
+                return;
+            }
+
+            const selectedTipe = document.querySelector('input[name="tipe_absen"]:checked')?.value || 'Masuk';
+
+            if (checkTodayAttendanceStatus()) {
+                input.value = '';
+                showToast(`Anda sudah melakukan absen ${selectedTipe} hari ini.`, 'error');
+                return;
+            }
+            if (selectedTipe === 'Pulang' && !isPulangTimeAllowed()) {
+                input.value = '';
+                showToast('Absen Pulang baru aktif mulai pukul 14.00 WIB.', 'error');
+                return;
+            }
+            if (!isWithinAttendanceRadius) {
+                input.value = '';
+                showToast('Anda berada di luar radius lokasi sekolah, absen dari foto tidak dapat dikirim.', 'error');
+                return;
+            }
+
+            showToast('Memproses foto & memverifikasi wajah...', 'info');
+            isVerifyingFace = true;
+            updateFaceMatchBadge('checking');
+            updatePresensiButtonState();
+
+            let img;
+            let objectUrl = null;
+            try {
+                objectUrl = URL.createObjectURL(file);
+                img = await loadImageElement(objectUrl);
+            } catch (err) {
+                isVerifyingFace = false;
+                input.value = '';
+                updateFaceMatchBadge('none');
+                showToast('Gagal membaca file foto. Coba pilih foto lain.', 'error');
+                updatePresensiButtonState();
+                return;
+            }
+
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = img.naturalWidth || img.width;
+            finalCanvas.height = img.naturalHeight || img.height;
+            finalCanvas.getContext('2d').drawImage(img, 0, 0, finalCanvas.width, finalCanvas.height);
+
+            globalBase64Photo = finalCanvas.toDataURL('image/jpeg', 0.85);
+            capturedPhotoTakenAt = new Date();
+            capturedFaceExpression = 'Foto Upload';
+            capturedPhotoExpression = 'Tidak Dianalisis';
+
+            if (capturedPhotoOverlay) {
+                capturedPhotoOverlay.src = globalBase64Photo;
+                capturedPhotoOverlay.classList.remove('hidden');
+            }
+            if (capturedPhotoBadge) {
+                capturedPhotoBadge.classList.remove('hidden');
+                capturedPhotoBadge.className = 'absolute top-3 left-3 z-30 px-3 py-1.5 rounded-full bg-slate-700/95 text-white text-xs font-bold shadow-lg';
+                capturedPhotoBadge.innerHTML = '<i class="fa-solid fa-image"></i> Foto Upload';
+            }
+            if (capturedExpressionBadge) {
+                capturedExpressionBadge.classList.add('hidden');
+            }
+
+            const liveDescriptor = await computeLiveFaceDescriptor(img);
+            isVerifyingFace = false;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            input.value = '';
+
+            if (!liveDescriptor) {
+                globalFaceDescriptor = null;
+                globalFaceMatch = null;
+                globalFaceDistance = null;
+                updateFaceMatchBadge('no-face');
+                showDialog('Wajah Tidak Terdeteksi', 'Wajah pada foto ini tidak terbaca jelas oleh AI. Gunakan foto lain yang lebih jelas, pencahayaan cukup, dan wajah menghadap ke depan.', 'error');
+                updatePresensiButtonState();
+                return;
+            }
+            globalFaceDescriptor = liveDescriptor;
+
+            if (!enrolledFaceDescriptor) {
+                globalFaceMatch = null;
+                updateFaceMatchBadge('unregistered');
+                showToast('Anda belum mendaftarkan wajah referensi, sehingga foto ini tidak dapat diverifikasi otomatis. Silakan daftarkan wajah terlebih dahulu.', 'error');
+                updatePresensiButtonState();
+                return;
+            }
+
+            const distance = euclideanFaceDistance(liveDescriptor, enrolledFaceDescriptor);
+            globalFaceDistance = distance;
+            globalFaceMatch = distance <= FACE_MATCH_THRESHOLD;
+            updateFaceMatchBadge(globalFaceMatch ? 'match' : 'mismatch', distance);
+            updatePresensiButtonState();
+
+            if (globalFaceMatch) {
+                showToast(`Wajah cocok (skor ${distance.toFixed(3)}). Mengirim absen otomatis dari foto...`, 'success');
+                const form = document.getElementById('form-presensi');
+                if (form) {
+                    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                    else form.dispatchEvent(new Event('submit', { cancelable: true }));
+                }
+            } else {
+                showDialog('Wajah Tidak Cocok', `Wajah pada foto ini tidak cocok dengan data wajah referensi Anda (skor jarak ${distance.toFixed(3)}, batas maksimal ${FACE_MATCH_THRESHOLD}). Presensi tidak dapat dikirim. Coba pilih foto lain yang lebih jelas menunjukkan wajah Anda.`, 'error');
+            }
         }
 
         function syncAttendanceTypeButtons(hasMasuk = false, hasPulang = false) {
@@ -4844,6 +5619,421 @@ function applyDateFilters() {
             const safePeriod = (adminReportPeriodLabel || 'periode').replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '');
             doc.save(`Rekap_Kehadiran_Guru_${safePeriod}.pdf`);
             showToast('PDF rekap kehadiran berhasil dibuat.', 'success');
+        }
+
+        // ==========================================
+        //  LAPORAN KEHADIRAN GURU BULANAN (FORMAT RESMI)
+        // ==========================================
+        const MONTHLY_REPORT_BULAN_LABEL = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+        const MONTHLY_REPORT_HARI_LABEL = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+        let lastMonthlyTeacherReport = null;
+
+        // Mengambil waktu HH:MM (24 jam) dari berbagai format jam yang tersimpan
+        // (string "06.48 WIB", string "06:48:00", atau tanggal ISO/Date dari Sheet).
+        function monthlyReportHHMM(value) {
+            if (!value) return '';
+            const raw = String(value).trim();
+            if (raw.includes('T') || raw.includes('1899')) {
+                try {
+                    const d = new Date(raw);
+                    if (!isNaN(d.getTime())) {
+                        return d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false });
+                    }
+                } catch (ignore) {}
+            }
+            const m = raw.match(/(\d{1,2})[:.](\d{2})/);
+            if (m) return `${String(m[1]).padStart(2, '0')}:${m[2]}`;
+            return '';
+        }
+
+        function monthlyReportMinutes(hhmm) {
+            const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+            if (!m) return null;
+            return Number(m[1]) * 60 + Number(m[2]);
+        }
+
+        function monthlyReportMinutesToClock(total) {
+            if (total === null || total === undefined || isNaN(total)) return '-';
+            const h = Math.floor(total / 60), m = Math.round(total % 60);
+            return `${String(h).padStart(2, '0')}.${String(m).padStart(2, '0')}`;
+        }
+
+        function populateMonthlyTeacherReportTeacherOptions() {
+            const select = document.getElementById('monthly-report-teacher');
+            if (!select) return;
+            const teachers = getActiveTeacherUsers().sort((a, b) =>
+                String(a.nama || '').localeCompare(String(b.nama || ''), 'id', { sensitivity: 'base' })
+            );
+            const currentValue = select.value;
+            if (!teachers.length) {
+                select.innerHTML = '<option value="">Belum ada data guru aktif</option>';
+                return;
+            }
+            select.innerHTML = teachers.map(user =>
+                `<option value="${escapeHtml(String(user.nip || user.username || ''))}" data-nama="${escapeHtml(String(user.nama || ''))}">${escapeHtml(String(user.nama || '-'))} (${escapeHtml(String(user.nip || user.username || '-'))})</option>`
+            ).join('');
+            if (currentValue && teachers.some(u => String(u.nip || u.username || '') === currentValue)) {
+                select.value = currentValue;
+            }
+        }
+
+        function initializeMonthlyTeacherReport() {
+            if (!currentSession || currentSession.role !== 'Admin') return;
+            populateMonthlyTeacherReportTeacherOptions();
+            const bulanSelect = document.getElementById('monthly-report-bulan');
+            const tahunInput = document.getElementById('monthly-report-tahun');
+            const now = new Date();
+            if (bulanSelect && !bulanSelect.dataset.touched) bulanSelect.value = String(now.getMonth());
+            if (tahunInput && !tahunInput.value) tahunInput.value = String(now.getFullYear());
+        }
+
+        // Menghitung data satu guru untuk satu bulan: rincian harian + rekapitulasi.
+        function computeMonthlyTeacherReport(nip, nama, year, monthIndex, batasMasukHHMM) {
+            const namaKey = String(nama || '').trim().toLowerCase();
+            const nipKey = String(nip || '').trim();
+            const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+            const batasMenit = monthlyReportMinutes(batasMasukHHMM) ?? monthlyReportMinutes('07:00');
+
+            const isSameTeacher = (rowNip, rowNama) => {
+                const rNip = String(rowNip || '').trim();
+                const rNama = String(rowNama || '').trim().toLowerCase();
+                if (nipKey && rNip) return rNip === nipKey;
+                return !!namaKey && rNama === namaKey;
+            };
+
+            const presensiByDate = new Map();
+            (mockAttendanceDb || []).forEach(row => {
+                if (!isSameTeacher(row.nip, row.nama)) return;
+                const dateKey = normalizeDateToDDMMYYYY(row.tanggal);
+                if (!dateKey) return;
+                if (!presensiByDate.has(dateKey)) presensiByDate.set(dateKey, { masuk: '', pulang: '', keterangan: [] });
+                const entry = presensiByDate.get(dateKey);
+                const tipe = String(row.tipe || '').toLowerCase();
+                const jamHHMM = monthlyReportHHMM(row.jam);
+                if (!jamHHMM) return;
+                if (tipe === 'masuk') {
+                    const current = monthlyReportMinutes(entry.masuk);
+                    const candidate = monthlyReportMinutes(jamHHMM);
+                    if (!entry.masuk || (current !== null && candidate !== null && candidate < current)) entry.masuk = jamHHMM;
+                } else if (tipe === 'pulang') {
+                    const current = monthlyReportMinutes(entry.pulang);
+                    const candidate = monthlyReportMinutes(jamHHMM);
+                    if (!entry.pulang || (current !== null && candidate !== null && candidate > current)) entry.pulang = jamHHMM;
+                }
+                if (row.keterangan && String(row.keterangan).trim() && String(row.keterangan).trim() !== '-') {
+                    entry.keterangan.push(String(row.keterangan).trim());
+                }
+            });
+
+            const statusRows = Array.from(mockStatusKehadiranDb || []).filter(row => isSameTeacher(row.nip, row.nama));
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const rows = [];
+            const totals = { H: 0, T: 0, S: 0, I: 0, D: 0, TS: 0, A: 0, hariKerja: 0 };
+            let totalTerlambatMenit = 0;
+            const masukMinutesList = [];
+            const pulangMinutesList = [];
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateObj = new Date(year, monthIndex, d);
+                const dow = dateObj.getDay();
+                const isWeekend = dow === 0 || dow === 6;
+                const ddmmyyyy = `${String(d).padStart(2, '0')}/${String(monthIndex + 1).padStart(2, '0')}/${year}`;
+                const presensi = presensiByDate.get(ddmmyyyy);
+                const jamMasuk = presensi?.masuk || '';
+                const jamPulang = presensi?.pulang || '';
+                let status = '-';
+                let terlambatMenit = 0;
+                let keterangan = (presensi?.keterangan || []).join(', ');
+
+                if (!isWeekend) totals.hariKerja += 1;
+
+                if (jamMasuk) {
+                    const masukMenit = monthlyReportMinutes(jamMasuk);
+                    masukMinutesList.push(masukMenit);
+                    if (jamPulang) pulangMinutesList.push(monthlyReportMinutes(jamPulang));
+                    if (batasMenit !== null && masukMenit !== null && masukMenit > batasMenit) {
+                        status = 'T';
+                        terlambatMenit = masukMenit - batasMenit;
+                        totals.T += 1;
+                        totalTerlambatMenit += terlambatMenit;
+                    } else {
+                        status = 'H';
+                    }
+                    totals.H += 1; // "Hadir" dihitung total hadir (termasuk yang terlambat)
+                    if (!keterangan) keterangan = '-';
+                } else {
+                    const official = statusRows.find(row => statusIsActiveOnDate(row, ddmmyyyy));
+                    if (official) {
+                        const category = statusCategory(official.jenis);
+                        const jenisText = String(official.jenis || '').toLowerCase();
+                        if (category === 'sakit') { status = 'S'; totals.S += 1; }
+                        else if (category === 'dinas' && jenisText.includes('sekolah')) { status = 'TS'; totals.TS += 1; }
+                        else if (category === 'dinas') { status = 'D'; totals.D += 1; }
+                        else { status = 'I'; totals.I += 1; }
+                        const desc = statusDescription(official);
+                        keterangan = desc ? `${official.jenis || ''} - ${desc}` : (official.jenis || '-');
+                    } else if (isWeekend) {
+                        status = '-';
+                        keterangan = 'Libur';
+                    } else if (dateObj < today) {
+                        status = 'A';
+                        totals.A += 1;
+                        keterangan = 'Tidak ada presensi/keterangan resmi';
+                    } else if (dateObj.getTime() === today.getTime()) {
+                        status = '-';
+                        keterangan = 'Hari ini - belum ada data';
+                    } else {
+                        status = '-';
+                        keterangan = 'Belum terjadi';
+                    }
+                }
+
+                rows.push({
+                    no: d, tanggal: d, hari: MONTHLY_REPORT_HARI_LABEL[dow],
+                    jamMasuk: jamMasuk || '-', jamPulang: jamPulang || '-',
+                    status, terlambatMenit, keterangan: keterangan || '-'
+                });
+            }
+
+            const rataMasuk = masukMinutesList.length ? masukMinutesList.reduce((a, b) => a + b, 0) / masukMinutesList.length : null;
+            const rataPulang = pulangMinutesList.length ? pulangMinutesList.reduce((a, b) => a + b, 0) / pulangMinutesList.length : null;
+            const kehadiranEfektif = totals.hariKerja ? Math.round((totals.H / totals.hariKerja) * 100) : 0;
+
+            return {
+                rows, totals, totalTerlambatMenit,
+                rataMasukLabel: monthlyReportMinutesToClock(rataMasuk),
+                rataPulangLabel: monthlyReportMinutesToClock(rataPulang),
+                kehadiranEfektif, daysInMonth
+            };
+        }
+
+        // Mengumpulkan seluruh input form laporan bulanan; mengembalikan null (dengan toast)
+        // apabila ada input wajib yang belum lengkap.
+        function gatherMonthlyTeacherReportInput() {
+            if (!currentSession || currentSession.role !== 'Admin') return null;
+            const teacherSelect = document.getElementById('monthly-report-teacher');
+            const bulanSelect = document.getElementById('monthly-report-bulan');
+            const tahunInput = document.getElementById('monthly-report-tahun');
+            const batasInput = document.getElementById('monthly-report-batas-masuk');
+            if (!teacherSelect || !teacherSelect.value) {
+                showToast('Pilih guru terlebih dahulu.', 'error');
+                return null;
+            }
+            const bulanIndex = Number(bulanSelect?.value ?? new Date().getMonth());
+            const tahun = Number(tahunInput?.value || new Date().getFullYear());
+            if (!tahun || tahun < 2000) {
+                showToast('Tahun tidak valid.', 'error');
+                return null;
+            }
+            const nip = teacherSelect.value;
+            const nama = teacherSelect.options[teacherSelect.selectedIndex]?.dataset.nama || '';
+            const batasMasuk = batasInput?.value || '07:00';
+            const jabatan = document.getElementById('monthly-report-jabatan')?.value.trim() || '';
+            const mapel = document.getElementById('monthly-report-mapel')?.value.trim() || '';
+            const kepsekNama = document.getElementById('monthly-report-kepsek-nama')?.value.trim() || '';
+            const kepsekNip = document.getElementById('monthly-report-kepsek-nip')?.value.trim() || '';
+
+            const data = computeMonthlyTeacherReport(nip, nama, tahun, bulanIndex, batasMasuk);
+            const result = { nip, nama, tahun, bulanIndex, batasMasuk, jabatan, mapel, kepsekNama, kepsekNip, data };
+            lastMonthlyTeacherReport = result;
+            return result;
+        }
+
+        function previewMonthlyTeacherReport(notify = false) {
+            const ctx = gatherMonthlyTeacherReportInput();
+            if (!ctx) return;
+            const { data } = ctx;
+
+            const tableBody = document.getElementById('monthly-report-table-body');
+            const previewWrapper = document.getElementById('monthly-report-preview-wrapper');
+            const recapWrapper = document.getElementById('monthly-report-recap-wrapper');
+            const summaryLabel = document.getElementById('monthly-report-summary-label');
+
+            if (previewWrapper) previewWrapper.classList.remove('hidden');
+            if (recapWrapper) recapWrapper.classList.remove('hidden');
+
+            if (tableBody) {
+                tableBody.innerHTML = data.rows.map(row => {
+                    const statusStyles = {
+                        H: 'bg-emerald-50 text-emerald-700', T: 'bg-amber-50 text-amber-700',
+                        S: 'bg-rose-50 text-rose-700', I: 'bg-sky-50 text-sky-700',
+                        D: 'bg-indigo-50 text-indigo-700', TS: 'bg-purple-50 text-purple-700',
+                        A: 'bg-red-50 text-red-700', '-': 'bg-slate-100 text-slate-500'
+                    };
+                    const badge = `<span class="px-2 py-0.5 rounded-full font-extrabold ${statusStyles[row.status] || statusStyles['-']}">${escapeHtml(row.status)}</span>`;
+                    return `<tr>
+                        <td class="py-2 px-4">${row.no}</td>
+                        <td class="py-2 px-4">${row.tanggal}</td>
+                        <td class="py-2 px-4">${escapeHtml(row.hari)}</td>
+                        <td class="py-2 px-4">${escapeHtml(row.jamMasuk)}</td>
+                        <td class="py-2 px-4">${escapeHtml(row.jamPulang)}</td>
+                        <td class="py-2 px-4 text-center">${badge}</td>
+                        <td class="py-2 px-4 text-center">${row.terlambatMenit || 0}</td>
+                        <td class="py-2 px-4">${escapeHtml(row.keterangan)}</td>
+                    </tr>`;
+                }).join('');
+            }
+
+            const recapB = document.getElementById('monthly-report-recap-b');
+            if (recapB) {
+                const t = data.totals;
+                recapB.innerHTML = [
+                    ['Hari kerja', `${t.hariKerja} hari`],
+                    ['Hadir', `${t.H} hari`],
+                    ['Terlambat', `${t.T} hari`],
+                    ['Sakit', `${t.S} hari`],
+                    ['Izin', `${t.I} hari`],
+                    ['Dinas luar', `${t.D} hari`],
+                    ['Tugas sekolah', `${t.TS} hari`],
+                    ['Alpa/Tanpa keterangan', `${t.A} hari`],
+                    ['Tidak melakukan absensi', `${t.A} hari`]
+                ].map(([label, value]) => `<tr class="border-b border-slate-50 last:border-0"><td class="py-1.5 pr-3 text-slate-600">${label}</td><td class="py-1.5 text-right font-bold text-slate-800">${value}</td></tr>`).join('');
+            }
+
+            const recapC = document.getElementById('monthly-report-recap-c');
+            if (recapC) {
+                recapC.innerHTML = [
+                    ['Total menit keterlambatan', `${data.totalTerlambatMenit} menit`],
+                    ['Rata-rata jam masuk', data.rataMasukLabel],
+                    ['Rata-rata jam pulang', data.rataPulangLabel],
+                    ['Kehadiran efektif', `${data.kehadiranEfektif} %`]
+                ].map(([label, value]) => `<tr class="border-b border-slate-50 last:border-0"><td class="py-1.5 pr-3 text-slate-600">${label}</td><td class="py-1.5 text-right font-bold text-slate-800">${value}</td></tr>`).join('');
+            }
+
+            if (summaryLabel) summaryLabel.textContent = `${ctx.nama || '-'} • ${MONTHLY_REPORT_BULAN_LABEL[ctx.bulanIndex]} ${ctx.tahun}`;
+            if (notify) showToast('Laporan kehadiran bulanan berhasil ditampilkan.', 'success');
+        }
+
+        function buildMonthlyTeacherReportHTML(ctx) {
+            const { data } = ctx;
+            const bulanLabel = MONTHLY_REPORT_BULAN_LABEL[ctx.bulanIndex];
+            const rowsHTML = data.rows.map(row => `<tr>
+                <td class="c">${row.no}</td><td class="c">${row.tanggal}</td><td>${escapeHtml(row.hari)}</td>
+                <td class="c">${escapeHtml(row.jamMasuk)}</td><td class="c">${escapeHtml(row.jamPulang)}</td>
+                <td class="c">${escapeHtml(row.status)}</td><td class="c">${row.terlambatMenit || 0}</td>
+                <td>${escapeHtml(row.keterangan)}</td>
+            </tr>`).join('');
+            const t = data.totals;
+            const cetakDate = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+
+            return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Laporan Kehadiran Guru - ${escapeHtml(ctx.nama || '')}</title>
+            <style>
+                @page{ size:A4 portrait; margin:15mm 14mm; }
+                body{ font-family:'Times New Roman',Times,serif; color:#111827; font-size:12px; line-height:1.45; }
+                .header{ text-align:center; margin-bottom:10px; }
+                .header h1{ margin:0; font-size:15px; letter-spacing:.5px; }
+                .header h2{ margin:4px 0 0; font-size:13px; }
+                .header h3{ margin:2px 0 10px; font-size:12px; font-weight:normal; }
+                .biodata{ margin:10px 0 14px; }
+                .biodata div{ margin:3px 0; }
+                .biodata b{ display:inline-block; min-width:140px; }
+                h4.section{ font-size:12.5px; margin:16px 0 6px; }
+                table{ width:100%; border-collapse:collapse; margin-bottom:6px; }
+                th,td{ border:1px solid #111827; padding:4px 6px; font-size:11px; vertical-align:middle; }
+                th{ background:#f1f5f9; text-align:center; font-weight:bold; }
+                td.c{ text-align:center; }
+                table.recap td:first-child{ width:70%; }
+                table.recap td:last-child{ text-align:right; font-weight:bold; }
+                ol{ margin:6px 0 0 18px; padding:0; font-size:11px; }
+                ol li{ margin-bottom:3px; }
+                .ttd{ margin-top:34px; width:100%; }
+                .ttd table{ border:none; }
+                .ttd td{ border:none; text-align:center; vertical-align:top; font-size:11.5px; width:50%; }
+                .ttd .space{ height:60px; }
+                .place-date{ text-align:right; margin-top:18px; font-size:11.5px; }
+                @media print{ .no-print{ display:none; } }
+            </style></head><body>
+                <div class="header">
+                    <h1>SMK CANDA BHIRAWA PARE</h1>
+                    <h2>LAPORAN KEHADIRAN GURU</h2>
+                    <h3>BULAN ${escapeHtml(bulanLabel.toUpperCase())} TAHUN ${escapeHtml(String(ctx.tahun))}</h3>
+                </div>
+                <div class="biodata">
+                    <div><b>Nama Guru</b> : ${escapeHtml(ctx.nama || '-')}</div>
+                    <div><b>NUPTK/NIK</b> : ${escapeHtml(ctx.nip || '-')}</div>
+                    <div><b>Jabatan</b> : ${escapeHtml(ctx.jabatan || '-')}</div>
+                    <div><b>Mata Pelajaran</b> : ${escapeHtml(ctx.mapel || '-')}</div>
+                    <div><b>Status Kepegawaian</b> : Guru Swasta</div>
+                    <div><b>Bulan</b> : ${escapeHtml(bulanLabel)} ${escapeHtml(String(ctx.tahun))}</div>
+                </div>
+
+                <h4 class="section">A. REKAPITULASI KEHADIRAN</h4>
+                <table>
+                    <thead><tr><th>No</th><th>Tanggal</th><th>Hari</th><th>Jam Masuk</th><th>Jam Pulang</th><th>Status</th><th>Terlambat<br>(Menit)</th><th>Keterangan</th></tr></thead>
+                    <tbody>${rowsHTML || '<tr><td colspan="8" class="c">Tidak ada data</td></tr>'}</tbody>
+                </table>
+
+                <h4 class="section">B. REKAPITULASI</h4>
+                <table class="recap">
+                    <tbody>
+                        <tr><td>Hari kerja</td><td>${t.hariKerja} hari</td></tr>
+                        <tr><td>Hadir</td><td>${t.H} hari</td></tr>
+                        <tr><td>Terlambat</td><td>${t.T} hari</td></tr>
+                        <tr><td>Sakit</td><td>${t.S} hari</td></tr>
+                        <tr><td>Izin</td><td>${t.I} hari</td></tr>
+                        <tr><td>Dinas luar</td><td>${t.D} hari</td></tr>
+                        <tr><td>Tugas sekolah</td><td>${t.TS} hari</td></tr>
+                        <tr><td>Alpa/Tanpa keterangan</td><td>${t.A} hari</td></tr>
+                        <tr><td>Tidak melakukan absensi</td><td>${t.A} hari</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 class="section">C. REKAP WAKTU</h4>
+                <table class="recap">
+                    <tbody>
+                        <tr><td>Total menit keterlambatan</td><td>${data.totalTerlambatMenit} menit</td></tr>
+                        <tr><td>Rata-rata jam masuk</td><td>${escapeHtml(data.rataMasukLabel)}</td></tr>
+                        <tr><td>Rata-rata jam pulang</td><td>${escapeHtml(data.rataPulangLabel)}</td></tr>
+                        <tr><td>Kehadiran efektif</td><td>${data.kehadiranEfektif} %</td></tr>
+                    </tbody>
+                </table>
+
+                <h4 class="section">D. KETERANGAN</h4>
+                <ol>
+                    <li>Absensi masuk dilakukan sesuai ketentuan sekolah.</li>
+                    <li>Guru yang datang setelah batas waktu yang ditentukan dicatat sebagai terlambat.</li>
+                    <li>Ketidakhadiran karena sakit, izin, dinas luar, atau tugas sekolah harus disertai keterangan yang dapat dipertanggungjawabkan.</li>
+                    <li>Data laporan bersumber dari sistem absensi sekolah dan/atau dokumen pendukung yang sah.</li>
+                    <li>Laporan ini digunakan sebagai dokumen administrasi dan evaluasi kedisiplinan guru.</li>
+                </ol>
+
+                <div class="place-date">Pare, .............................. 20${escapeHtml(String(ctx.tahun).slice(-2))}</div>
+                <div class="ttd">
+                    <table>
+                        <tr>
+                            <td>
+                                Mengetahui,<br><b>Kepala SMK Canda Bhirawa Pare</b>
+                                <div class="space"></div>
+                                (${escapeHtml(ctx.kepsekNama || '................................................')})<br>
+                                NIP/NUPTK: ${escapeHtml(ctx.kepsekNip || '....................................')}
+                            </td>
+                            <td>
+                                <br><b>Guru yang Bersangkutan</b>
+                                <div class="space"></div>
+                                (${escapeHtml(ctx.nama || '................................................')})
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="no-print" style="margin-top:20px;text-align:center;color:#94a3b8;font-size:10px;">Dokumen dibuat otomatis oleh E-Presensi &amp; Jurnal Guru — cetak ${escapeHtml(cetakDate)}</div>
+            </body></html>`;
+        }
+
+        function printMonthlyTeacherReport() {
+            const ctx = gatherMonthlyTeacherReportInput();
+            if (!ctx) return;
+            const printWindow = window.open('', '_blank', 'width=1000,height=900');
+            if (!printWindow) {
+                showToast('Pop-up cetak diblokir browser. Izinkan pop-up lalu coba lagi.', 'error');
+                return;
+            }
+            printWindow.document.open();
+            printWindow.document.write(buildMonthlyTeacherReportHTML(ctx));
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => printWindow.print(), 400);
         }
 
         function copyAppsScriptCode() {
