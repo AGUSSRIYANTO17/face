@@ -479,7 +479,7 @@
                     </label>
 
                     <!-- Tombol aksi ditempatkan langsung di bawah frame kamera agar mudah dijangkau saat selfie -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                    <div id="presensi-manual-actions" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
                         <button type="button" id="btn-capture-photo" onclick="captureAttendancePhoto()" disabled class="w-full bg-slate-200 text-slate-400 py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-not-allowed">
                             <i class="fa-solid fa-camera"></i> Ambil Foto Manual
                         </button>
@@ -487,7 +487,8 @@
                             <i class="fa-solid fa-paper-plane"></i> Kirim Absen
                         </button>
                     </div>
-                    <p class="text-[10px] text-center text-slate-400 -mt-1"><i class="fa-solid fa-circle-info"></i> Kalau Absen Otomatis nonaktif atau wajah belum terdaftar, gunakan tombol "Ambil Foto Manual" lalu "Kirim Absen".</p>
+                    <p id="presensi-manual-actions-hint" class="text-[10px] text-center text-slate-400 -mt-1"><i class="fa-solid fa-circle-info"></i> Kalau Absen Otomatis nonaktif atau wajah belum terdaftar, gunakan tombol "Ambil Foto Manual" lalu "Kirim Absen".</p>
+                    <p id="kiosk-auto-hint" class="hidden text-[10px] text-center text-emerald-600 font-semibold -mt-1"><i class="fa-solid fa-bolt"></i> Mode Kiosk: cukup arahkan wajah ke kamera, foto & absen terkirim otomatis.</p>
 
                 </div>
 
@@ -1402,7 +1403,7 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbzqjJYLOKQioxAgfZIJwB6Ac1DnscXRQ0FHW2_ujb5CenNDWsE3JiFBL3d08utCiCh6/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby389X8zGuIWcVnVzFcKruWINgfZ-zC6AaMzVrbZzOS7-mg6XRMyx_aY6-K8ZQz-zUrWw/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
@@ -2094,13 +2095,16 @@
         }
 
         function startAutoAttendanceLoop() {
-            if (isKioskMode) return; // Kiosk: identitas belum diketahui sebelum foto dikirim ke server
             if (autoAttendanceInterval) return;
             if (!autoAttendanceModeEnabled) return;
             faceMatchStreak = 0;
             isAutoAttendanceTriggered = false;
             updateAutoAttendanceBanner('idle');
-            autoAttendanceInterval = setInterval(autoFaceRecognitionTick, AUTO_RECOGNITION_INTERVAL_MS);
+            // Mode Kiosk: identitas belum diketahui di sisi klien, jadi dipakai loop
+            // deteksi khusus (kioskAutoFaceTick) yang langsung capture & kirim begitu
+            // ada wajah stabil di kamera -- identifikasi 1:N dilakukan di server.
+            const tickFn = isKioskMode ? kioskAutoFaceTick : autoFaceRecognitionTick;
+            autoAttendanceInterval = setInterval(tickFn, AUTO_RECOGNITION_INTERVAL_MS);
         }
 
         function stopAutoAttendanceLoop() {
@@ -2229,6 +2233,58 @@
                 // Verifikasi ulang gagal (mis. pencahayaan berubah) -> reset supaya bisa dicoba lagi
                 isAutoAttendanceTriggered = false;
                 faceMatchStreak = 0;
+            }
+        }
+
+        // ---------- MODE KIOSK: deteksi & kirim absen otomatis untuk SEMUA guru ----------
+        // Tidak ada pembandingan wajah di sisi klien (tidak ada satu referensi tertentu).
+        // Begitu ada wajah yang terdeteksi stabil oleh face-mesh selama beberapa tick
+        // berturut-turut, foto langsung diambil & dikirim -- identifikasi guru mana yang
+        // absen (1:N matching) sepenuhnya dilakukan di server (FACE_identifyAndSimpanPresensi_).
+        async function kioskAutoFaceTick() {
+            if (!isKioskMode || !cameraActive || faceEnrollmentMode) return;
+            if (isAutoAttendanceTriggered || isSubmittingPresensi || isVerifyingFace) return;
+
+            if (!isWithinAttendanceRadius) {
+                faceMatchStreak = 0;
+                updateAutoAttendanceBanner('out-of-range');
+                return;
+            }
+            if (!isFaceDetected) {
+                faceMatchStreak = 0;
+                updateAutoAttendanceBanner('no-face');
+                return;
+            }
+
+            faceMatchStreak++;
+            updateAutoAttendanceBanner('matching', faceMatchStreak);
+            if (faceMatchStreak >= AUTO_ATTENDANCE_STREAK_REQUIRED) {
+                isAutoAttendanceTriggered = true;
+                updateAutoAttendanceBanner('submitting');
+                await triggerKioskAutoAttendance();
+            }
+        }
+
+        // Kiosk: capture + kirim otomatis, tanpa syarat cocok dengan satu referensi
+        // tertentu (cukup foto berhasil diambil & wajah terbaca jelas oleh AI).
+        async function triggerKioskAutoAttendance() {
+            await captureAttendancePhoto();
+
+            if (globalBase64Photo && globalFaceDescriptor) {
+                const form = document.getElementById('form-presensi');
+                if (form) {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        form.dispatchEvent(new Event('submit', { cancelable: true }));
+                    }
+                }
+                updateAutoAttendanceBanner('submitting');
+            } else {
+                // Wajah belum terbaca jelas -> reset supaya bisa dicoba lagi tick berikutnya
+                isAutoAttendanceTriggered = false;
+                faceMatchStreak = 0;
+                updateAutoAttendanceBanner('idle');
             }
         }
 
@@ -2813,6 +2869,22 @@
             pulangAutoSwitchDone = false;
             const kioskBanner = document.getElementById('kiosk-mode-banner');
             if (kioskBanner) kioskBanner.classList.add('hidden');
+            if (wasKiosk) {
+                const autoToggleRow = document.getElementById('auto-attendance-toggle-row');
+                if (autoToggleRow) autoToggleRow.classList.remove('hidden');
+                const manualActions = document.getElementById('presensi-manual-actions');
+                if (manualActions) manualActions.classList.remove('hidden');
+                const manualHint = document.getElementById('presensi-manual-actions-hint');
+                if (manualHint) manualHint.classList.remove('hidden');
+                const kioskHint = document.getElementById('kiosk-auto-hint');
+                if (kioskHint) kioskHint.classList.add('hidden');
+                const autoToggle = document.getElementById('toggle-auto-attendance');
+                if (autoToggle) { autoToggle.checked = true; autoToggle.disabled = false; }
+                ['btn-tab-dashboard', 'btn-tab-status-kehadiran', 'btn-tab-jurnal', 'btn-tab-rekap-jurnal', 'btn-tab-rekap', 'btn-tab-ganti-password'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.classList.remove('hidden');
+                });
+            }
             document.getElementById('login-screen').classList.remove('hidden');
             document.getElementById('main-workspace').classList.add('hidden');
             document.getElementById('login-username').value = "";
@@ -2846,13 +2918,18 @@
                 if (el) el.classList.add('hidden');
             });
 
-            // Absen Otomatis & pendaftaran wajah dimatikan di kiosk: identitas baru
-            // diketahui SETELAH server mencocokkan wajah, jadi alurnya manual per foto.
-            const autoToggle = document.getElementById('toggle-auto-attendance');
-            if (autoToggle) { autoToggle.checked = false; autoToggle.disabled = true; }
-            setAutoAttendanceMode(false);
+            // Kiosk selalu memakai jalur Absen Otomatis (loop deteksi wajah khusus
+            // kiosk), tapi UI toggle & tombol manual disembunyikan karena identitas
+            // guru baru diketahui SETELAH server mencocokkan wajah (1:N).
+            autoAttendanceModeEnabled = true;
             const autoToggleRow = document.getElementById('auto-attendance-toggle-row');
             if (autoToggleRow) autoToggleRow.classList.add('hidden');
+            const manualActions = document.getElementById('presensi-manual-actions');
+            if (manualActions) manualActions.classList.add('hidden');
+            const manualHint = document.getElementById('presensi-manual-actions-hint');
+            if (manualHint) manualHint.classList.add('hidden');
+            const kioskHint = document.getElementById('kiosk-auto-hint');
+            if (kioskHint) kioskHint.classList.remove('hidden');
 
             const kioskBanner = document.getElementById('kiosk-mode-banner');
             if (kioskBanner) kioskBanner.classList.remove('hidden');
@@ -2863,7 +2940,7 @@
             stopDeviceLocationTracking();
             fetchLocationsFromGAS();
             switchTab('presensi');
-            showToast('Mode Kiosk aktif. Arahkan wajah ke kamera, lalu pilih Masuk/Pulang.', 'info');
+            showToast('Mode Kiosk aktif. Arahkan wajah ke kamera — foto & absen terkirim otomatis begitu wajah dikenali.', 'info');
         }
 
         function loadDatabaseData() {
@@ -4467,11 +4544,20 @@ checkTodayAttendanceStatus();
         // terhadap SELURUH guru terdaftar (1:N), lalu mencatat presensi guru yang
         // paling cocok. Aturan lain (radius, jam Pulang, satu kali per hari) tetap
         // divalidasi ulang oleh server persis seperti presensi mandiri biasa.
+        // Kiosk: setelah satu percobaan absen selesai (berhasil/gagal), longgarkan
+        // kembali kunci auto-attendance supaya loop bisa lanjut mengenali guru berikutnya.
+        function resetKioskAutoLoopState() {
+            isAutoAttendanceTriggered = false;
+            faceMatchStreak = 0;
+            if (isKioskMode) updateAutoAttendanceBanner('idle');
+        }
+
         function submitKioskPresensi(payload, ctx) {
             if (IS_PREVIEW) {
                 setTimeout(() => {
                     isSubmittingPresensi = false;
                     submitPresensiBtn.disabled = false;
+                    resetKioskAutoLoopState();
 
                     // Mode demo: cocokkan ke descriptor demo (localStorage) milik semua guru.
                     let best = null;
@@ -4541,6 +4627,7 @@ checkTodayAttendanceStatus();
                 isSubmittingPresensi = false;
                 submitPresensiBtn.disabled = false;
                 updatePresensiButtonState();
+                resetKioskAutoLoopState();
 
                 if (response.success) {
                     showDialog(
@@ -4557,6 +4644,7 @@ checkTodayAttendanceStatus();
                 isSubmittingPresensi = false;
                 submitPresensiBtn.disabled = false;
                 updatePresensiButtonState();
+                resetKioskAutoLoopState();
                 showDialog('Gagal Jaringan', 'Koneksi ke Apps Script bermasalah: ' + err, 'error');
             });
         }
