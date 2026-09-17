@@ -1177,6 +1177,53 @@
         </div>
     </div>
 
+    <!-- ==================== PENETAPAN HARI LIBUR NASIONAL ==================== -->
+    <div id="admin-holiday-panel" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="w-11 h-11 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-calendar-xmark text-lg"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Penetapan Hari Libur Nasional</h3>
+                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">Tetapkan tanggal libur nasional/cuti bersama. Tanggal ini otomatis tidak dihitung sebagai hari kerja maupun Alpa pada Laporan Kehadiran Guru Bulanan.</p>
+                </div>
+            </div>
+            <span id="admin-holiday-count" class="text-[10px] font-bold bg-rose-50 text-rose-700 px-3 py-2 rounded-xl whitespace-nowrap">0 Hari Libur</span>
+        </div>
+
+        <form id="form-tambah-libur" onsubmit="handleTambahHariLibur(event)" class="p-5 grid grid-cols-1 md:grid-cols-[200px_1fr_auto] gap-3 border-b border-slate-100 bg-slate-50/60">
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Tanggal Libur</label>
+                <input type="date" id="holiday-tanggal" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-rose-500">
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[10px] font-bold uppercase text-slate-500">Keterangan / Nama Hari Libur</label>
+                <input type="text" id="holiday-keterangan" required maxlength="200" placeholder="Contoh: Hari Kemerdekaan RI" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-rose-500">
+            </div>
+            <div class="flex items-end">
+                <button type="submit" id="btn-tambah-libur" class="w-full md:w-auto px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all">
+                    <i class="fa-solid fa-plus"></i> Tambah
+                </button>
+            </div>
+        </form>
+
+        <div class="overflow-x-auto max-h-[360px]">
+            <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 z-10">
+                    <tr class="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase border-b border-slate-100">
+                        <th class="py-3 px-5">Tanggal</th>
+                        <th class="py-3 px-5">Keterangan</th>
+                        <th class="py-3 px-5 text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-holiday-table-body" class="text-xs divide-y divide-slate-100">
+                    <tr><td colspan="3" class="py-8 text-center text-slate-400">Belum ada hari libur nasional yang ditetapkan.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- ==================== LAPORAN KEHADIRAN GURU BULANAN (FORMAT RESMI) ==================== -->
     <div id="admin-monthly-teacher-report" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div class="p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1255,7 +1302,7 @@
         <div id="monthly-report-preview-wrapper" class="overflow-x-auto hidden">
             <table class="w-full text-left border-collapse whitespace-nowrap">
                 <thead>
-                    <tr class="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase border-b border-slate-100">
+                    <tr id="monthly-report-table-head-row" class="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase border-b border-slate-100">
                         <th class="py-3 px-4">No</th>
                         <th class="py-3 px-4">Tanggal</th>
                         <th class="py-3 px-4">Hari</th>
@@ -1337,7 +1384,7 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbzKSHiRWSLy7wzZDZGp6u71rUz_jY3Qyu4KaXrq3XoqMtzpvqhmB2_5g1_AgK3BVWgT/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbyEO0WnF66yOphEUEt_f8jTnGSKrKojHEzghuWvmEQfKiF3iZGqRO0ofqK0yj-pulsU/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
@@ -1346,6 +1393,7 @@
         let mockJurnalDb = [];
         let mockUsersDb = [];
         let mockStatusKehadiranDb = [];
+        let mockHolidaysDb = []; // Database Hari Libur Nasional / Cuti Bersama
         let publicStatusKehadiranHariIni = [];
         let mockLocationsDb = []; // Database 5 Titik Koordinat Sekolah
         
@@ -1356,6 +1404,8 @@
         let globalBase64Photo = "";
         let capturedPhotoTakenAt = null;
         let isSubmittingPresensi = false;
+        let lastPresensiSubmitAt = 0;
+        const PRESENSI_SUBMIT_COOLDOWN_MS = 5000; // Jeda 5 detik antar percobaan kirim absen agar tidak dobel di database
         let cameraActive = false;
         let isFaceDetected = false;
         let isWithinAttendanceRadius = false;
@@ -1451,6 +1501,14 @@
             } else {
                 mockStatusKehadiranDb = [];
                 localStorage.setItem("mock_status_kehadiran", JSON.stringify(mockStatusKehadiranDb));
+            }
+
+            // 4b. Database Hari Libur Nasional
+            if (localStorage.getItem("mock_hari_libur")) {
+                mockHolidaysDb = JSON.parse(localStorage.getItem("mock_hari_libur"));
+            } else {
+                mockHolidaysDb = [];
+                localStorage.setItem("mock_hari_libur", JSON.stringify(mockHolidaysDb));
             }
 
             // 5. Database Jurnal
@@ -1591,7 +1649,8 @@
         // ---------- ABSEN OTOMATIS (Auto Face Recognition Attendance) ----------
         let autoAttendanceInterval = null;
         let faceMatchStreak = 0;
-        let isAutoAttendanceTriggered = false;   // supaya hanya trigger 1x sampai berhasil/kondisi berubah
+        let isAutoAttendanceTriggered = false;
+        let pulangAutoSwitchDone = false; // Agar auto-pindah ke tab Pulang (>=15.00 WIB) hanya terjadi sekali per sesi   // supaya hanya trigger 1x sampai berhasil/kondisi berubah
         let autoAttendanceModeEnabled = true;    // guru bisa nonaktifkan & pakai mode manual bila mau
         const AUTO_ATTENDANCE_STREAK_REQUIRED = 3;  // jumlah deteksi cocok berturut-turut sebelum auto kirim
         const AUTO_RECOGNITION_INTERVAL_MS = 700;   // jeda antar pengecekan wajah (ms)
@@ -2717,6 +2776,7 @@
             globalFaceDistance = null;
             faceEnrollmentMode = false;
             faceEnrollmentSamples = [];
+            pulangAutoSwitchDone = false;
             document.getElementById('login-screen').classList.remove('hidden');
             document.getElementById('main-workspace').classList.add('hidden');
             document.getElementById('login-username').value = "";
@@ -2732,6 +2792,7 @@
                 renderUsersTable();
                 updateDashboardStats();
                 renderStatusKehadiranHistory();
+                renderHolidayTable();
                 if (currentSession && currentSession.role === "Admin") {
                     initializeAdminAttendanceReport();
                     renderAdminTeacherAttendancePanel(false);
@@ -2741,6 +2802,7 @@
                 // Ambil daftar lokasi cabang sekolah dari GAS terlebih dahulu
                 fetchLocationsFromGAS();
                 fetchStatusKehadiranFromGAS();
+                fetchHariLiburFromGAS();
 
                 // Ambil daftar Presensi & Jurnal
                 const url = `${GAS_URL}?action=getData&role=${currentSession.role}&nip=${currentSession.nip}`;
@@ -3697,6 +3759,25 @@ function focusAdminDeviceMarker(index) {
             return nowWib.hour >= 14;
         }
 
+        // Setelah pukul 15.00 WIB, form presensi otomatis diarahkan ke tab Pulang
+        // (selama guru belum melakukan absen Pulang) supaya tidak perlu klik manual.
+        // Hanya dilakukan sekali per sesi login agar tidak menimpa pilihan manual guru.
+        function maybeAutoSelectPulang() {
+            if (!currentSession || pulangAutoSwitchDone) return;
+            const nowWib = getWibTimeParts();
+            if (nowWib.hour < 15) return;
+
+            const masukInput = document.getElementById('tipe-absen-masuk');
+            const btnPulang = document.getElementById('btn-absen-pulang');
+            if (!masukInput || !btnPulang) return;
+
+            pulangAutoSwitchDone = true;
+            if (masukInput.checked && !btnPulang.disabled) {
+                selectAttendanceType('Pulang');
+                showToast('Sudah pukul 15.00 WIB — formulir otomatis diarahkan ke Absen Pulang.', 'info');
+            }
+        }
+
         function selectAttendanceType(type) {
             const input = document.getElementById(type === 'Pulang' ? 'tipe-absen-pulang' : 'tipe-absen-masuk');
             if (!input) return;
@@ -4018,6 +4099,7 @@ function focusAdminDeviceMarker(index) {
 
         function updatePresensiButtonState() {
             const sudahAbsen = checkTodayAttendanceStatus();
+            maybeAutoSelectPulang();
 
             if (isSubmittingPresensi) {
                 capturePhotoBtn.disabled = true;
@@ -4092,6 +4174,20 @@ function focusAdminDeviceMarker(index) {
         function handlePresensiSubmit(event) {
             event.preventDefault();
 
+            // Jeda anti-dobel: tolak klik yang menumpuk saat request sebelumnya
+            // masih diproses, atau yang datang terlalu cepat setelah percobaan
+            // sebelumnya (mis. klik berkali-kali/double-tap di HP).
+            if (isSubmittingPresensi) {
+                showToast("Permintaan sebelumnya masih diproses, mohon tunggu sebentar.", "info");
+                return;
+            }
+            const sinceLastSubmit = Date.now() - lastPresensiSubmitAt;
+            if (sinceLastSubmit < PRESENSI_SUBMIT_COOLDOWN_MS) {
+                const sisaDetik = Math.ceil((PRESENSI_SUBMIT_COOLDOWN_MS - sinceLastSubmit) / 1000);
+                showToast(`Mohon tunggu ${sisaDetik} detik sebelum mengirim absen lagi.`, "error");
+                return;
+            }
+
             // Validasi satu kali absen untuk jenis yang sama dalam satu hari
             if (checkTodayAttendanceStatus()) {
                 showToast("Anda sudah melakukan absen tersebut hari ini.", "error");
@@ -4114,6 +4210,7 @@ function focusAdminDeviceMarker(index) {
                 return;
             }
 
+            lastPresensiSubmitAt = Date.now();
             isSubmittingPresensi = true;
             submitPresensiBtn.disabled = true;
             submitPresensiBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Menghubungi GPS Perangkat...`;
@@ -5626,6 +5723,28 @@ function applyDateFilters() {
         // ==========================================
         const MONTHLY_REPORT_BULAN_LABEL = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
         const MONTHLY_REPORT_HARI_LABEL = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+        const MONTHLY_REPORT_ALL_VALUE = '__ALL__';
+        const MONTHLY_REPORT_SINGLE_TABLE_HEAD = `
+            <th class="py-3 px-4">No</th>
+            <th class="py-3 px-4">Tanggal</th>
+            <th class="py-3 px-4">Hari</th>
+            <th class="py-3 px-4">Jam Masuk</th>
+            <th class="py-3 px-4">Jam Pulang</th>
+            <th class="py-3 px-4 text-center">Status</th>
+            <th class="py-3 px-4 text-center">Terlambat (Menit)</th>
+            <th class="py-3 px-4">Keterangan</th>`;
+        const MONTHLY_REPORT_ALL_TABLE_HEAD = `
+            <th class="py-3 px-4">No</th>
+            <th class="py-3 px-4">Nama Guru</th>
+            <th class="py-3 px-4 text-center">Hari Kerja</th>
+            <th class="py-3 px-4 text-center">Hadir</th>
+            <th class="py-3 px-4 text-center">Terlambat</th>
+            <th class="py-3 px-4 text-center">Sakit</th>
+            <th class="py-3 px-4 text-center">Izin</th>
+            <th class="py-3 px-4 text-center">Dinas</th>
+            <th class="py-3 px-4 text-center">Tugas Sekolah</th>
+            <th class="py-3 px-4 text-center">Alpa</th>
+            <th class="py-3 px-4 text-center">Efektif</th>`;
         let lastMonthlyTeacherReport = null;
 
         // Mengambil waktu HH:MM (24 jam) dari berbagai format jam yang tersimpan
@@ -5669,10 +5788,12 @@ function applyDateFilters() {
                 select.innerHTML = '<option value="">Belum ada data guru aktif</option>';
                 return;
             }
-            select.innerHTML = teachers.map(user =>
+            const allOption = `<option value="${MONTHLY_REPORT_ALL_VALUE}">-- Semua Guru (${teachers.length} Guru Aktif) --</option>`;
+            const teacherOptions = teachers.map(user =>
                 `<option value="${escapeHtml(String(user.nip || user.username || ''))}" data-nama="${escapeHtml(String(user.nama || ''))}">${escapeHtml(String(user.nama || '-'))} (${escapeHtml(String(user.nip || user.username || '-'))})</option>`
             ).join('');
-            if (currentValue && teachers.some(u => String(u.nip || u.username || '') === currentValue)) {
+            select.innerHTML = allOption + teacherOptions;
+            if (currentValue && (currentValue === MONTHLY_REPORT_ALL_VALUE || teachers.some(u => String(u.nip || u.username || '') === currentValue))) {
                 select.value = currentValue;
             }
         }
@@ -5680,6 +5801,7 @@ function applyDateFilters() {
         function initializeMonthlyTeacherReport() {
             if (!currentSession || currentSession.role !== 'Admin') return;
             populateMonthlyTeacherReportTeacherOptions();
+            renderHolidayTable();
             const bulanSelect = document.getElementById('monthly-report-bulan');
             const tahunInput = document.getElementById('monthly-report-tahun');
             const now = new Date();
@@ -5740,6 +5862,8 @@ function applyDateFilters() {
                 const dow = dateObj.getDay();
                 const isWeekend = dow === 0 || dow === 6;
                 const ddmmyyyy = `${String(d).padStart(2, '0')}/${String(monthIndex + 1).padStart(2, '0')}/${year}`;
+                const holidayInfo = monthlyReportHolidayInfo(ddmmyyyy);
+                const isLiburTetap = isWeekend || !!holidayInfo;
                 const presensi = presensiByDate.get(ddmmyyyy);
                 const jamMasuk = presensi?.masuk || '';
                 const jamPulang = presensi?.pulang || '';
@@ -5747,7 +5871,7 @@ function applyDateFilters() {
                 let terlambatMenit = 0;
                 let keterangan = (presensi?.keterangan || []).join(', ');
 
-                if (!isWeekend) totals.hariKerja += 1;
+                if (!isLiburTetap) totals.hariKerja += 1;
 
                 if (jamMasuk) {
                     const masukMenit = monthlyReportMinutes(jamMasuk);
@@ -5774,6 +5898,9 @@ function applyDateFilters() {
                         else { status = 'I'; totals.I += 1; }
                         const desc = statusDescription(official);
                         keterangan = desc ? `${official.jenis || ''} - ${desc}` : (official.jenis || '-');
+                    } else if (holidayInfo) {
+                        status = '-';
+                        keterangan = `Libur Nasional - ${holidayInfo}`;
                     } else if (isWeekend) {
                         status = '-';
                         keterangan = 'Libur';
@@ -5827,16 +5954,35 @@ function applyDateFilters() {
                 showToast('Tahun tidak valid.', 'error');
                 return null;
             }
-            const nip = teacherSelect.value;
-            const nama = teacherSelect.options[teacherSelect.selectedIndex]?.dataset.nama || '';
             const batasMasuk = batasInput?.value || '07:00';
             const jabatan = document.getElementById('monthly-report-jabatan')?.value.trim() || '';
             const mapel = document.getElementById('monthly-report-mapel')?.value.trim() || '';
             const kepsekNama = document.getElementById('monthly-report-kepsek-nama')?.value.trim() || '';
             const kepsekNip = document.getElementById('monthly-report-kepsek-nip')?.value.trim() || '';
 
+            if (teacherSelect.value === MONTHLY_REPORT_ALL_VALUE) {
+                const teachers = getActiveTeacherUsers().sort((a, b) =>
+                    String(a.nama || '').localeCompare(String(b.nama || ''), 'id', { sensitivity: 'base' })
+                );
+                if (!teachers.length) {
+                    showToast('Belum ada data guru aktif.', 'error');
+                    return null;
+                }
+                const reports = teachers.map(user => {
+                    const nip = String(user.nip || user.username || '');
+                    const nama = String(user.nama || '-');
+                    return { nip, nama, data: computeMonthlyTeacherReport(nip, nama, tahun, bulanIndex, batasMasuk) };
+                });
+                const result = { isAll: true, tahun, bulanIndex, batasMasuk, jabatan, mapel, kepsekNama, kepsekNip, reports };
+                lastMonthlyTeacherReport = result;
+                return result;
+            }
+
+            const nip = teacherSelect.value;
+            const nama = teacherSelect.options[teacherSelect.selectedIndex]?.dataset.nama || '';
+
             const data = computeMonthlyTeacherReport(nip, nama, tahun, bulanIndex, batasMasuk);
-            const result = { nip, nama, tahun, bulanIndex, batasMasuk, jabatan, mapel, kepsekNama, kepsekNip, data };
+            const result = { isAll: false, nip, nama, tahun, bulanIndex, batasMasuk, jabatan, mapel, kepsekNama, kepsekNip, data };
             lastMonthlyTeacherReport = result;
             return result;
         }
@@ -5844,16 +5990,45 @@ function applyDateFilters() {
         function previewMonthlyTeacherReport(notify = false) {
             const ctx = gatherMonthlyTeacherReportInput();
             if (!ctx) return;
-            const { data } = ctx;
 
             const tableBody = document.getElementById('monthly-report-table-body');
+            const tableHeadRow = document.getElementById('monthly-report-table-head-row');
             const previewWrapper = document.getElementById('monthly-report-preview-wrapper');
             const recapWrapper = document.getElementById('monthly-report-recap-wrapper');
             const summaryLabel = document.getElementById('monthly-report-summary-label');
 
             if (previewWrapper) previewWrapper.classList.remove('hidden');
+
+            if (ctx.isAll) {
+                if (recapWrapper) recapWrapper.classList.add('hidden');
+                if (tableHeadRow) tableHeadRow.innerHTML = MONTHLY_REPORT_ALL_TABLE_HEAD;
+                if (tableBody) {
+                    tableBody.innerHTML = ctx.reports.map((r, idx) => {
+                        const t = r.data.totals;
+                        return `<tr>
+                            <td class="py-2 px-4">${idx + 1}</td>
+                            <td class="py-2 px-4 font-semibold">${escapeHtml(r.nama)}</td>
+                            <td class="py-2 px-4 text-center">${t.hariKerja}</td>
+                            <td class="py-2 px-4 text-center">${t.H}</td>
+                            <td class="py-2 px-4 text-center">${t.T}</td>
+                            <td class="py-2 px-4 text-center">${t.S}</td>
+                            <td class="py-2 px-4 text-center">${t.I}</td>
+                            <td class="py-2 px-4 text-center">${t.D}</td>
+                            <td class="py-2 px-4 text-center">${t.TS}</td>
+                            <td class="py-2 px-4 text-center">${t.A}</td>
+                            <td class="py-2 px-4 text-center">${r.data.kehadiranEfektif}%</td>
+                        </tr>`;
+                    }).join('') || '<tr><td colspan="11" class="py-8 text-center text-slate-400">Tidak ada data guru aktif.</td></tr>';
+                }
+                if (summaryLabel) summaryLabel.textContent = `Semua Guru (${ctx.reports.length} guru) • ${MONTHLY_REPORT_BULAN_LABEL[ctx.bulanIndex]} ${ctx.tahun}`;
+                if (notify) showToast('Ringkasan kehadiran semua guru berhasil ditampilkan.', 'success');
+                return;
+            }
+
+            if (tableHeadRow) tableHeadRow.innerHTML = MONTHLY_REPORT_SINGLE_TABLE_HEAD;
             if (recapWrapper) recapWrapper.classList.remove('hidden');
 
+            const { data } = ctx;
             if (tableBody) {
                 tableBody.innerHTML = data.rows.map(row => {
                     const statusStyles = {
@@ -5906,22 +6081,11 @@ function applyDateFilters() {
             if (notify) showToast('Laporan kehadiran bulanan berhasil ditampilkan.', 'success');
         }
 
-        function buildMonthlyTeacherReportHTML(ctx) {
-            const { data } = ctx;
-            const bulanLabel = MONTHLY_REPORT_BULAN_LABEL[ctx.bulanIndex];
-            const rowsHTML = data.rows.map(row => `<tr>
-                <td class="c">${row.no}</td><td class="c">${row.tanggal}</td><td>${escapeHtml(row.hari)}</td>
-                <td class="c">${escapeHtml(row.jamMasuk)}</td><td class="c">${escapeHtml(row.jamPulang)}</td>
-                <td class="c">${escapeHtml(row.status)}</td><td class="c">${row.terlambatMenit || 0}</td>
-                <td>${escapeHtml(row.keterangan)}</td>
-            </tr>`).join('');
-            const t = data.totals;
-            const cetakDate = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
-
-            return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Laporan Kehadiran Guru - ${escapeHtml(ctx.nama || '')}</title>
-            <style>
+        const MONTHLY_REPORT_PRINT_STYLE = `
                 @page{ size:A4 portrait; margin:15mm 14mm; }
                 body{ font-family:'Times New Roman',Times,serif; color:#111827; font-size:12px; line-height:1.45; }
+                .report-page{ }
+                .report-page + .report-page{ page-break-before: always; }
                 .header{ text-align:center; margin-bottom:10px; }
                 .header h1{ margin:0; font-size:15px; letter-spacing:.5px; }
                 .header h2{ margin:4px 0 0; font-size:13px; }
@@ -5943,8 +6107,23 @@ function applyDateFilters() {
                 .ttd td{ border:none; text-align:center; vertical-align:top; font-size:11.5px; width:50%; }
                 .ttd .space{ height:60px; }
                 .place-date{ text-align:right; margin-top:18px; font-size:11.5px; }
-                @media print{ .no-print{ display:none; } }
-            </style></head><body>
+                @media print{ .no-print{ display:none; } }`;
+
+        // Membangun isi (body) satu halaman laporan untuk satu guru. Dipakai baik
+        // untuk cetak satu guru maupun digabung berulang saat mode "Semua Guru".
+        function buildMonthlyTeacherReportBodyHTML(ctx) {
+            const { data } = ctx;
+            const bulanLabel = MONTHLY_REPORT_BULAN_LABEL[ctx.bulanIndex];
+            const rowsHTML = data.rows.map(row => `<tr>
+                <td class="c">${row.no}</td><td class="c">${row.tanggal}</td><td>${escapeHtml(row.hari)}</td>
+                <td class="c">${escapeHtml(row.jamMasuk)}</td><td class="c">${escapeHtml(row.jamPulang)}</td>
+                <td class="c">${escapeHtml(row.status)}</td><td class="c">${row.terlambatMenit || 0}</td>
+                <td>${escapeHtml(row.keterangan)}</td>
+            </tr>`).join('');
+            const t = data.totals;
+            const cetakDate = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+
+            return `<div class="report-page">
                 <div class="header">
                     <h1>SMK CANDA BHIRAWA PARE</h1>
                     <h2>LAPORAN KEHADIRAN GURU</h2>
@@ -6018,7 +6197,26 @@ function applyDateFilters() {
                     </table>
                 </div>
                 <div class="no-print" style="margin-top:20px;text-align:center;color:#94a3b8;font-size:10px;">Dokumen dibuat otomatis oleh E-Presensi &amp; Jurnal Guru — cetak ${escapeHtml(cetakDate)}</div>
-            </body></html>`;
+            </div>`;
+        }
+
+        function buildMonthlyTeacherReportHTML(ctx) {
+            return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Laporan Kehadiran Guru - ${escapeHtml(ctx.nama || '')}</title>
+            <style>${MONTHLY_REPORT_PRINT_STYLE}</style></head><body>${buildMonthlyTeacherReportBodyHTML(ctx)}</body></html>`;
+        }
+
+        // Menggabungkan laporan resmi seluruh guru aktif menjadi satu dokumen
+        // cetak, satu guru per halaman (dipisah page-break).
+        function buildMonthlyTeacherReportHTMLForAll(ctx) {
+            const bulanLabel = MONTHLY_REPORT_BULAN_LABEL[ctx.bulanIndex];
+            const bodies = ctx.reports.map(r => buildMonthlyTeacherReportBodyHTML({
+                nip: r.nip, nama: r.nama, data: r.data,
+                tahun: ctx.tahun, bulanIndex: ctx.bulanIndex,
+                jabatan: ctx.jabatan, mapel: ctx.mapel,
+                kepsekNama: ctx.kepsekNama, kepsekNip: ctx.kepsekNip
+            })).join('');
+            return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>Laporan Kehadiran Guru - Semua Guru - ${escapeHtml(bulanLabel)} ${escapeHtml(String(ctx.tahun))}</title>
+            <style>${MONTHLY_REPORT_PRINT_STYLE}</style></head><body>${bodies || '<p>Tidak ada data guru aktif.</p>'}</body></html>`;
         }
 
         function printMonthlyTeacherReport() {
@@ -6029,8 +6227,9 @@ function applyDateFilters() {
                 showToast('Pop-up cetak diblokir browser. Izinkan pop-up lalu coba lagi.', 'error');
                 return;
             }
+            const html = ctx.isAll ? buildMonthlyTeacherReportHTMLForAll(ctx) : buildMonthlyTeacherReportHTML(ctx);
             printWindow.document.open();
-            printWindow.document.write(buildMonthlyTeacherReportHTML(ctx));
+            printWindow.document.write(html);
             printWindow.document.close();
             printWindow.focus();
             setTimeout(() => printWindow.print(), 400);
@@ -6368,6 +6567,136 @@ async function handleStatusKehadiranSubmit(event) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Kirim Keterangan Ketidakhadiran';
     }
+}
+
+async function fetchHariLiburFromGAS() {
+    if (IS_PREVIEW || !currentSession) {
+        renderHolidayTable();
+        return mockHolidaysDb;
+    }
+    try {
+        const res = await fetch(`${GAS_URL}?action=getHariLibur&_=${Date.now()}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Data hari libur gagal dimuat.');
+        mockHolidaysDb = Array.from(data.libur || []);
+        renderHolidayTable();
+        return mockHolidaysDb;
+    } catch (err) {
+        console.error('Gagal memuat hari libur nasional:', err);
+        const body = document.getElementById('admin-holiday-table-body');
+        if (body) body.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-rose-500">Endpoint hari libur belum aktif. Pasang patch Hari Libur Nasional pada Apps Script.</td></tr>';
+        return [];
+    }
+}
+
+function renderHolidayTable() {
+    const body = document.getElementById('admin-holiday-table-body');
+    const countBadge = document.getElementById('admin-holiday-count');
+    const rows = Array.from(mockHolidaysDb || []).sort((a, b) =>
+        ddMmYyyyToKey(normalizeDateToDDMMYYYY(a.tanggal)).localeCompare(ddMmYyyyToKey(normalizeDateToDDMMYYYY(b.tanggal)))
+    );
+    if (countBadge) countBadge.textContent = `${rows.length} Hari Libur`;
+    if (!body) return;
+    if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-slate-400">Belum ada hari libur nasional yang ditetapkan.</td></tr>';
+        return;
+    }
+    body.innerHTML = rows.map(row => `
+        <tr>
+            <td class="py-3 px-5 font-semibold text-slate-700 whitespace-nowrap">${escapeHtml(normalizeDateToDDMMYYYY(row.tanggal))}</td>
+            <td class="py-3 px-5 text-slate-600">${escapeHtml(row.keterangan || '-')}</td>
+            <td class="py-3 px-5 text-right">
+                <button type="button" onclick="handleHapusHariLibur('${escapeHtml(String(row.id || ''))}')" class="text-rose-600 hover:text-rose-800 text-xs font-bold">
+                    <i class="fa-solid fa-trash-can"></i> Hapus
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function handleTambahHariLibur(event) {
+    event.preventDefault();
+    if (!currentSession || currentSession.role !== 'Admin') return;
+    const tanggalInput = document.getElementById('holiday-tanggal');
+    const keteranganInput = document.getElementById('holiday-keterangan');
+    const btn = document.getElementById('btn-tambah-libur');
+    const tanggalIso = tanggalInput?.value || '';
+    const keterangan = keteranganInput?.value.trim() || '';
+
+    if (!tanggalIso || !keterangan) {
+        showToast('Lengkapi tanggal dan keterangan hari libur.', 'error');
+        return;
+    }
+    const tanggalDdMmYyyy = isoToDdMmYyyy(tanggalIso);
+    const duplicate = (mockHolidaysDb || []).some(h => normalizeDateToDDMMYYYY(h.tanggal) === tanggalDdMmYyyy);
+    if (duplicate) {
+        showToast('Tanggal tersebut sudah ditetapkan sebagai hari libur.', 'error');
+        return;
+    }
+
+    btn.disabled = true;
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Menyimpan...';
+    try {
+        if (IS_PREVIEW) {
+            mockHolidaysDb.unshift({
+                id: `LIBUR-${Date.now()}`,
+                tanggal: tanggalDdMmYyyy,
+                keterangan,
+                timestamp: new Date().toLocaleString('id-ID')
+            });
+            localStorage.setItem('mock_hari_libur', JSON.stringify(mockHolidaysDb));
+            renderHolidayTable();
+        } else {
+            const response = await fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ action: 'simpanHariLibur', data: JSON.stringify({ tanggal: tanggalDdMmYyyy, keterangan }) })
+            });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message || 'Hari libur gagal disimpan.');
+            await fetchHariLiburFromGAS();
+        }
+        showToast('Hari libur nasional berhasil ditambahkan.', 'success');
+        tanggalInput.value = '';
+        keteranganInput.value = '';
+    } catch (err) {
+        showToast(String(err?.message || err), 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
+async function handleHapusHariLibur(id) {
+    if (!currentSession || currentSession.role !== 'Admin') return;
+    if (!confirm('Hapus penetapan hari libur ini?')) return;
+    try {
+        if (IS_PREVIEW) {
+            mockHolidaysDb = (mockHolidaysDb || []).filter(h => String(h.id) !== String(id));
+            localStorage.setItem('mock_hari_libur', JSON.stringify(mockHolidaysDb));
+            renderHolidayTable();
+        } else {
+            const response = await fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ action: 'hapusHariLibur', data: JSON.stringify({ id }) })
+            });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.message || 'Hari libur gagal dihapus.');
+            await fetchHariLiburFromGAS();
+        }
+        showToast('Hari libur nasional berhasil dihapus.', 'success');
+    } catch (err) {
+        showToast(String(err?.message || err), 'error');
+    }
+}
+
+// Mengembalikan keterangan hari libur nasional pada tanggal (format dd/mm/yyyy)
+// tertentu, atau null bila tanggal tersebut bukan hari libur nasional.
+function monthlyReportHolidayInfo(ddmmyyyy) {
+    const match = (mockHolidaysDb || []).find(h => normalizeDateToDDMMYYYY(h.tanggal) === ddmmyyyy);
+    return match ? (match.keterangan || 'Libur Nasional') : null;
 }
 
 async function fetchStatusKehadiranFromGAS() {
