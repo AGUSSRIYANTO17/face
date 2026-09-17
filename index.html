@@ -1403,12 +1403,14 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbxlnNhSnkornscDDk99qvdFBSUYrPeYTOgKdhOZgWxd0cTNQmepl-97QdZGRAL05QyT/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby389X8zGuIWcVnVzFcKruWINgfZ-zC6AaMzVrbZzOS7-mg6XRMyx_aY6-K8ZQz-zUrWw/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
         let currentSession = null;
-        let isKioskMode = false; // true = mode "Absen Wajah (Semua Guru)" dari layar depan, tanpa login per-guru 
+        let isKioskMode = false; // true = mode "Absen Wajah (Semua Guru)" dari layar depan, tanpa login per-guru
+        let kioskFaceDatabase = []; // [{nip, nama, descriptor}] -- dimuat saat masuk Mode Kiosk, dipakai untuk pencocokan 1:N di browser
+        let kioskIdentified = null; // {nip, nama, distance} guru yang terakhir dikenali di Mode Kiosk 
         let mockAttendanceDb = [];
         let mockJurnalDb = [];
         let mockUsersDb = [];
@@ -2270,22 +2272,42 @@
         async function triggerKioskAutoAttendance() {
             await captureAttendancePhoto();
 
-            if (globalBase64Photo && globalFaceDescriptor) {
-                const form = document.getElementById('form-presensi');
-                if (form) {
-                    if (typeof form.requestSubmit === 'function') {
-                        form.requestSubmit();
-                    } else {
-                        form.dispatchEvent(new Event('submit', { cancelable: true }));
-                    }
-                }
-                updateAutoAttendanceBanner('submitting');
-            } else {
+            if (!globalBase64Photo || !globalFaceDescriptor) {
                 // Wajah belum terbaca jelas -> reset supaya bisa dicoba lagi tick berikutnya
                 isAutoAttendanceTriggered = false;
                 faceMatchStreak = 0;
                 updateAutoAttendanceBanner('idle');
+                return;
             }
+
+            // Kenali wajah LANGSUNG di browser dulu (1:N) supaya NIP & Nama guru bisa
+            // langsung ditampilkan di formulir sebelum absen benar-benar dikirim.
+            const identified = identifyKioskFace(globalFaceDescriptor);
+            if (!identified) {
+                showToast('Wajah tidak dikenali. Pastikan wajah sudah didaftarkan oleh Admin, lalu coba lagi dengan pencahayaan yang cukup.', 'error');
+                clearCapturedPhoto(false);
+                isAutoAttendanceTriggered = false;
+                faceMatchStreak = 0;
+                updateAutoAttendanceBanner('idle');
+                return;
+            }
+
+            kioskIdentified = identified;
+            const nipField = document.getElementById('presensi-nip');
+            const namaField = document.getElementById('presensi-nama');
+            if (nipField) nipField.value = identified.nip;
+            if (namaField) namaField.value = identified.nama;
+            showToast(`Wajah dikenali: ${identified.nama}. Mengirim absen...`, 'success');
+
+            const form = document.getElementById('form-presensi');
+            if (form) {
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.dispatchEvent(new Event('submit', { cancelable: true }));
+                }
+            }
+            updateAutoAttendanceBanner('submitting');
         }
 
         // ---------- ADMIN: KELOLA WAJAH REFERENSI GURU ----------
@@ -2895,15 +2917,63 @@
 
         // ---------- MODE KIOSK: ABSEN WAJAH UNTUK SEMUA GURU (TANPA LOGIN) ----------
         // Dipakai di perangkat bersama (mis. diletakkan di ruang guru/piket).
-        // Wajah dikenali otomatis dari SELURUH data Wajah Referensi yang terdaftar
-        // (pencocokan 1:N dilakukan di server), lalu presensi Masuk/Pulang guru yang
-        // dikenali langsung dicatat ke database Presensi -- aturan lama (radius lokasi,
-        // jam Pulang mulai 14.00 WIB, satu kali per hari) tetap berlaku sepenuhnya.
+        // Wajah dikenali otomatis dari SELURUH data Wajah Referensi yang terdaftar --
+        // pencocokan 1:N dilakukan LANGSUNG di browser (real-time, sehingga NIP & Nama
+        // guru langsung tampil di formulir begitu wajahnya dikenali), lalu server tetap
+        // memverifikasi ulang & mencatat presensi Masuk/Pulang ke database Presensi --
+        // aturan lama (radius lokasi, jam Pulang mulai 14.00 WIB, satu kali per hari)
+        // tetap berlaku sepenuhnya.
+        async function fetchKioskFaceDatabase() {
+            if (IS_PREVIEW) {
+                kioskFaceDatabase = (mockUsersDb || []).map(u => {
+                    if (!u.nip) return null;
+                    try {
+                        const raw = localStorage.getItem('demo_face_descriptor_' + u.nip);
+                        if (!raw) return null;
+                        const descriptor = JSON.parse(raw);
+                        if (!Array.isArray(descriptor) || descriptor.length !== 128) return null;
+                        return { nip: u.nip, nama: u.nama, descriptor };
+                    } catch (ignore) { return null; }
+                }).filter(Boolean);
+                return;
+            }
+            try {
+                const res = await fetch(`${GAS_URL}?action=getAllFaceDescriptorsForKiosk&_=${Date.now()}`, { cache: 'no-store' });
+                const data = await res.json();
+                kioskFaceDatabase = (data && data.success) ? (data.data || []) : [];
+                if (!kioskFaceDatabase.length) {
+                    showToast('Belum ada data Wajah Referensi guru yang terdaftar. Daftarkan wajah guru dulu lewat Menu Admin.', 'error');
+                }
+            } catch (err) {
+                console.error('Gagal memuat database wajah kiosk:', err);
+                kioskFaceDatabase = [];
+                showToast('Gagal memuat database wajah dari server. Periksa koneksi lalu coba tutup & buka lagi Mode Kiosk.', 'error');
+            }
+        }
+
+        // Cocokkan satu descriptor wajah live terhadap SELURUH data di kioskFaceDatabase,
+        // kembalikan guru dengan jarak (distance) terkecil bila di bawah ambang batas.
+        function identifyKioskFace(liveDescriptor) {
+            let best = null;
+            let bestDistance = Infinity;
+            (kioskFaceDatabase || []).forEach(ref => {
+                if (!Array.isArray(ref.descriptor) || ref.descriptor.length !== 128) return;
+                const distance = euclideanFaceDistance(liveDescriptor, ref.descriptor);
+                if (distance < bestDistance) { bestDistance = distance; best = ref; }
+            });
+            if (best && bestDistance <= FACE_MATCH_THRESHOLD) {
+                return { nip: best.nip, nama: best.nama, distance: bestDistance };
+            }
+            return null;
+        }
+
         function enterKioskMode() {
             currentSession = { username: 'kiosk', nama: 'Mode Kiosk (Semua Guru)', nip: '', role: 'Kiosk' };
             isKioskMode = true;
             pulangAutoSwitchDone = false;
+            kioskIdentified = null;
             fetchEnrolledFaceDescriptor();
+            fetchKioskFaceDatabase();
 
             document.getElementById('current-user-display').innerText = 'Mode Kiosk — Semua Guru';
             document.getElementById('app-badge-role').innerText = 'KIOSK ABSEN WAJAH';
@@ -4390,7 +4460,14 @@ function focusAdminDeviceMarker(index) {
                 if (!success || !isWithinAttendanceRadius) {
                     isSubmittingPresensi = false;
                     updatePresensiButtonState();
-                    showDialog("Di Luar Radius Presensi", `Presensi hanya dapat dilakukan maksimal ${ATTENDANCE_RADIUS_METERS} meter dari kampus terdekat. Kampus terdeteksi: ${selectedSchoolName}. Jarak perangkat: ${globalDistance}.`, "error");
+                    const radiusMsg = `Presensi hanya dapat dilakukan maksimal ${ATTENDANCE_RADIUS_METERS} meter dari kampus terdekat. Kampus terdeteksi: ${selectedSchoolName}. Jarak perangkat: ${globalDistance}.`;
+                    if (isKioskMode) {
+                        resetKioskAutoLoopState();
+                        resetKioskIdentityFields();
+                        showToast(radiusMsg, "error");
+                    } else {
+                        showDialog("Di Luar Radius Presensi", radiusMsg, "error");
+                    }
                     return;
                 }
 
@@ -4411,8 +4488,8 @@ function focusAdminDeviceMarker(index) {
 
                 // Konstruksi payload dengan koordinat perangkat (globalCoordinates) dan link maps perangkat (globalMapsLink)
                 const payload = {
-                    nip: currentSession.nip,
-                    nama: currentSession.nama,
+                    nip: (isKioskMode && kioskIdentified) ? kioskIdentified.nip : currentSession.nip,
+                    nama: (isKioskMode && kioskIdentified) ? kioskIdentified.nama : currentSession.nama,
                     tipe: tipeVal,
                     // Kerapian AI ikut disimpan pada keterangan agar tetap kompatibel dengan backend lama.
                     keterangan: `${ketVal} | Kerapian AI: ${kerapianVal} | Ekspresi: ${ekspresiVal}`,
@@ -4428,8 +4505,8 @@ function focusAdminDeviceMarker(index) {
                     // Data Face Recognition: descriptor 128 dimensi hasil face-api.js untuk
                     // diverifikasi ulang oleh backend (lihat FACE_verifyBeforeAttendance_ di Apps Script).
                     faceDescriptor: globalFaceDescriptor ? Array.from(globalFaceDescriptor) : null,
-                    face_match: globalFaceMatch === true ? 'Cocok' : (globalFaceMatch === false ? 'Tidak Cocok' : 'Belum Terdaftar'),
-                    face_distance: (typeof globalFaceDistance === 'number') ? globalFaceDistance.toFixed(3) : ''
+                    face_match: isKioskMode ? 'Cocok (Kiosk Umum)' : (globalFaceMatch === true ? 'Cocok' : (globalFaceMatch === false ? 'Tidak Cocok' : 'Belum Terdaftar')),
+                    face_distance: (isKioskMode && kioskIdentified) ? kioskIdentified.distance.toFixed(3) : ((typeof globalFaceDistance === 'number') ? globalFaceDistance.toFixed(3) : '')
                 };
 
                 submitPresensiBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Mengirim Data...`;
@@ -4552,32 +4629,29 @@ checkTodayAttendanceStatus();
             if (isKioskMode) updateAutoAttendanceBanner('idle');
         }
 
+        // Kiosk: kembalikan kolom NIP/Nama ke placeholder & bersihkan status kenal
+        // terakhir, supaya formulir siap dipakai guru berikutnya.
+        function resetKioskIdentityFields() {
+            kioskIdentified = null;
+            const nipField = document.getElementById('presensi-nip');
+            const namaField = document.getElementById('presensi-nama');
+            if (nipField) nipField.value = 'Dikenali otomatis dari wajah';
+            if (namaField) namaField.value = 'Dikenali otomatis dari wajah';
+        }
+
         function submitKioskPresensi(payload, ctx) {
             if (IS_PREVIEW) {
                 setTimeout(() => {
                     isSubmittingPresensi = false;
                     submitPresensiBtn.disabled = false;
                     resetKioskAutoLoopState();
-
-                    // Mode demo: cocokkan ke descriptor demo (localStorage) milik semua guru.
-                    let best = null;
-                    let bestDistance = Infinity;
-                    (mockUsersDb || []).forEach(u => {
-                        if (!u.nip) return;
-                        try {
-                            const raw = localStorage.getItem('demo_face_descriptor_' + u.nip);
-                            if (!raw) return;
-                            const refDescriptor = JSON.parse(raw);
-                            if (!Array.isArray(refDescriptor) || refDescriptor.length !== 128) return;
-                            const distance = euclideanFaceDistance(payload.faceDescriptor, refDescriptor);
-                            if (distance < bestDistance) { bestDistance = distance; best = u; }
-                        } catch (ignore) {}
-                    });
-
                     updatePresensiButtonState();
 
-                    if (!best || bestDistance > FACE_MATCH_THRESHOLD) {
-                        showDialog('Wajah Tidak Dikenali', 'Wajah tidak cocok dengan data guru manapun yang terdaftar (mode demo). Pastikan wajah sudah didaftarkan lewat akun pribadi terlebih dahulu.', 'error');
+                    // payload.nip sudah diisi hasil pengenalan wajah di browser (identifyKioskFace).
+                    const best = (mockUsersDb || []).find(u => String(u.nip) === String(payload.nip));
+                    if (!best) {
+                        showToast('Wajah tidak dikenali (mode demo). Pastikan wajah sudah didaftarkan lewat akun pribadi terlebih dahulu.', 'error');
+                        resetKioskIdentityFields();
                         return;
                     }
 
@@ -4585,7 +4659,8 @@ checkTodayAttendanceStatus();
                         r.nip === best.nip && formatTanggalRekap(String(r.tanggal || '')) === ctx.todayDateStr && r.tipe === payload.tipe
                     );
                     if (isDuplicate) {
-                        showDialog('Penyimpanan Gagal', `${best.nama} sudah melakukan absen ${payload.tipe} hari ini (${ctx.todayDateStr}).`, 'error');
+                        showToast(`${best.nama} sudah melakukan absen ${payload.tipe} hari ini (${ctx.todayDateStr}).`, 'error');
+                        resetKioskIdentityFields();
                         return;
                     }
 
@@ -4608,7 +4683,8 @@ checkTodayAttendanceStatus();
                     mockAttendanceDb.unshift(newRecord);
                     localStorage.setItem('mock_presensi', JSON.stringify(mockAttendanceDb));
 
-                    showDialog('Presensi Berhasil (Demo Kiosk)', `Wajah dikenali sebagai ${best.nama}. Absen ${payload.tipe} berhasil dicatat (mode demo lokal).`, 'success');
+                    showToast(`${best.nama} — Absen ${payload.tipe} berhasil dicatat (mode demo lokal).`, 'success');
+                    resetKioskIdentityFields();
                     resetPresensiForm();
                 }, 1000);
                 return;
@@ -4630,14 +4706,12 @@ checkTodayAttendanceStatus();
                 resetKioskAutoLoopState();
 
                 if (response.success) {
-                    showDialog(
-                        'Presensi Berhasil',
-                        `Wajah dikenali sebagai ${response.nama || '-'}. Absen ${response.tipe || payload.tipe} berhasil dicatat pukul ${ctx.timestamp.toLocaleTimeString('id-ID')} WIB di cabang ${selectedSchoolName}.`,
-                        'success'
-                    );
+                    showToast(`${response.nama || payload.nama} — Absen ${response.tipe || payload.tipe} berhasil dicatat pukul ${ctx.timestamp.toLocaleTimeString('id-ID')} WIB.`, 'success');
+                    resetKioskIdentityFields();
                     resetPresensiForm();
                 } else {
-                    showDialog('Presensi Gagal', response.message || 'Wajah tidak dikenali atau presensi gagal disimpan.', 'error');
+                    showToast(response.message || 'Wajah tidak dikenali atau presensi gagal disimpan.', 'error');
+                    resetKioskIdentityFields();
                 }
             })
             .catch(err => {
@@ -4645,7 +4719,8 @@ checkTodayAttendanceStatus();
                 submitPresensiBtn.disabled = false;
                 updatePresensiButtonState();
                 resetKioskAutoLoopState();
-                showDialog('Gagal Jaringan', 'Koneksi ke Apps Script bermasalah: ' + err, 'error');
+                showToast('Koneksi ke Apps Script bermasalah: ' + err, 'error');
+                resetKioskIdentityFields();
             });
         }
 
