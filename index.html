@@ -119,7 +119,7 @@
                 <button id="landing-btn-kiosk" type="button" onclick="enterKioskMode()" class="landing-menu-btn w-full p-5 rounded-2xl border-2 border-emerald-500 bg-emerald-50 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
                     <div class="flex items-center gap-3">
                         <div class="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center"><i class="fa-solid fa-camera text-lg"></i></div>
-                        <div><p class="font-extrabold text-slate-900">Absen Wajah (Semua Guru)</p><p class="text-[10px] text-slate-500 mt-0.5">Tanpa login &mdash; wajah dikenali otomatis, langsung absen Masuk/Pulang</p></div>
+                        <div><p class="font-extrabold text-slate-900">Absen Wajah (Semua Guru)</p><p class="text-[10px] text-slate-500 mt-0.5">Tanpa login &mdash; kenali banyak wajah sekaligus, langsung absen Masuk/Pulang</p></div>
                     </div>
                 </button>
                 <button id="landing-btn-presensi" type="button" onclick="showLandingPanel('presensi')" class="landing-menu-btn w-full p-5 rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
@@ -413,7 +413,7 @@
                         <i class="fa-solid fa-camera text-2xl"></i>
                         <div>
                             <p class="font-extrabold">Mode Kiosk — Absen Wajah Semua Guru</p>
-                            <p class="text-xs text-emerald-100">Arahkan wajah ke kamera lalu tekan "Ambil Foto Manual" &amp; "Kirim Absen". Nama guru akan dikenali otomatis oleh sistem.</p>
+                            <p class="text-xs text-emerald-100">Bisa lebih dari satu orang sekaligus dalam satu kamera — sistem otomatis mengenali & mencatat absen semua wajah yang dikenali.</p>
                         </div>
                     </div>
                     <button type="button" onclick="handleLogout()" class="px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-all flex items-center gap-2 shrink-0">
@@ -488,7 +488,7 @@
                         </button>
                     </div>
                     <p id="presensi-manual-actions-hint" class="text-[10px] text-center text-slate-400 -mt-1"><i class="fa-solid fa-circle-info"></i> Kalau Absen Otomatis nonaktif atau wajah belum terdaftar, gunakan tombol "Ambil Foto Manual" lalu "Kirim Absen".</p>
-                    <p id="kiosk-auto-hint" class="hidden text-[10px] text-center text-emerald-600 font-semibold -mt-1"><i class="fa-solid fa-bolt"></i> Mode Kiosk: cukup arahkan wajah ke kamera, foto & absen terkirim otomatis.</p>
+                    <p id="kiosk-auto-hint" class="hidden text-[10px] text-center text-emerald-600 font-semibold -mt-1"><i class="fa-solid fa-bolt"></i> Mode Kiosk: arahkan wajah (bisa lebih dari satu orang) ke kamera, foto & absen terkirim otomatis.</p>
 
                 </div>
 
@@ -1196,6 +1196,61 @@
         </div>
     </div>
 
+    <!-- ==================== ABSEN MASSAL (MULTIPLE GURU) ==================== -->
+    <div id="admin-bulk-attendance-panel" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-people-group text-lg"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Absen Massal (Multiple Guru)</h3>
+                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">Catat presensi beberapa guru sekaligus tanpa verifikasi wajah satu-satu — cocok untuk acara/upacara sekolah dimana semua guru hadir bersamaan.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div class="lg:col-span-1 flex flex-col gap-3">
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-bold uppercase text-slate-500">Jenis Absen</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600 transition-all">
+                            <input type="radio" name="bulk-tipe-absen" value="Masuk" checked class="sr-only"> <i class="fa-solid fa-right-to-bracket"></i> Masuk
+                        </label>
+                        <label class="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600 transition-all">
+                            <input type="radio" name="bulk-tipe-absen" value="Pulang" class="sr-only"> <i class="fa-solid fa-right-from-bracket"></i> Pulang
+                        </label>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-bold uppercase text-slate-500">Tanggal</label>
+                    <input type="date" id="bulk-attendance-tanggal" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-bold uppercase text-slate-500">Keterangan</label>
+                    <input type="text" id="bulk-attendance-keterangan" maxlength="200" value="Hadir (Absen Massal oleh Admin)" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:outline-none focus:border-indigo-500">
+                </div>
+                <button type="button" onclick="submitBulkAttendance()" id="btn-submit-bulk-attendance" class="mt-1 w-full px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all">
+                    <i class="fa-solid fa-check-double"></i> Simpan Absen Massal
+                </button>
+                <div id="bulk-attendance-result" class="hidden text-xs rounded-xl p-3 leading-relaxed"></div>
+            </div>
+
+            <div class="lg:col-span-2 flex flex-col gap-2">
+                <div class="flex items-center justify-between gap-2">
+                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+                        <input type="checkbox" id="bulk-attendance-select-all" onchange="toggleAllBulkAttendanceGuru(this.checked)" class="w-4 h-4 accent-indigo-600"> Pilih Semua Guru
+                    </label>
+                    <span id="bulk-attendance-selected-count" class="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-xl whitespace-nowrap">0 dipilih</span>
+                </div>
+                <div id="bulk-attendance-guru-list" class="border border-slate-100 rounded-xl divide-y divide-slate-100 max-h-[340px] overflow-y-auto">
+                    <p class="p-6 text-center text-xs text-slate-400">Memuat daftar guru...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ==================== PENETAPAN HARI LIBUR NASIONAL ==================== -->
     <div id="admin-holiday-panel" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div class="p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1403,7 +1458,7 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbx83PmgyROJDhMCpas6gP9xg9aRfKd69MXPMrdnbAHzex3EeQuR2sMJJjKoBcsLYlfm/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby389X8zGuIWcVnVzFcKruWINgfZ-zC6AaMzVrbZzOS7-mg6XRMyx_aY6-K8ZQz-zUrWw/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
@@ -1728,6 +1783,26 @@
             } catch (err) {
                 console.error('Gagal menghitung descriptor wajah:', err);
                 return null;
+            }
+        }
+
+        // Sama seperti computeLiveFaceDescriptor, tapi mendeteksi SEMUA wajah yang
+        // tampak di frame sekaligus (dipakai Mode Kiosk untuk absen banyak guru
+        // dalam satu foto, mis. datang bersamaan/berombongan).
+        async function computeAllLiveFaceDescriptors(sourceCanvas) {
+            const ready = await ensureFaceApiModelsLoaded();
+            if (!ready) return [];
+            try {
+                const detections = await faceapi
+                    .detectAllFaces(sourceCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
+                return (detections || [])
+                    .filter(d => d && d.descriptor)
+                    .map(d => d.descriptor); // array Float32Array panjang 128
+            } catch (err) {
+                console.error('Gagal menghitung descriptor banyak wajah:', err);
+                return [];
             }
         }
 
@@ -2267,12 +2342,32 @@
             }
         }
 
-        // Kiosk: capture + kirim otomatis, tanpa syarat cocok dengan satu referensi
-        // tertentu (cukup foto berhasil diambil & wajah terbaca jelas oleh AI).
-        async function triggerKioskAutoAttendance() {
-            await captureAttendancePhoto();
+        // Ambil satu frame kamera sebagai foto rombongan, lalu deteksi & hitung
+        // descriptor SEMUA wajah yang tampak di frame tersebut sekaligus.
+        async function captureKioskGroupAttendance() {
+            if (!cameraActive || !videoElement) return { photo: null, descriptors: [] };
 
-            if (!globalBase64Photo || !globalFaceDescriptor) {
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = videoElement.videoWidth || 640;
+            finalCanvas.height = videoElement.videoHeight || 480;
+            const finalCtx = finalCanvas.getContext('2d');
+
+            // Membalik foto agar hasil sama seperti tampilan kamera depan.
+            finalCtx.translate(finalCanvas.width, 0);
+            finalCtx.scale(-1, 1);
+            finalCtx.drawImage(videoElement, 0, 0, finalCanvas.width, finalCanvas.height);
+
+            const photo = finalCanvas.toDataURL('image/jpeg', 0.85);
+            const descriptors = await computeAllLiveFaceDescriptors(finalCanvas);
+            return { photo, descriptors };
+        }
+
+        // Kiosk: sekali jepret, kenali & absenkan SEMUA guru yang tampak di kamera
+        // (mis. datang berombongan/bersamaan), bukan hanya satu orang.
+        async function triggerKioskAutoAttendance() {
+            const { photo, descriptors } = await captureKioskGroupAttendance();
+
+            if (!photo || !descriptors.length) {
                 // Wajah belum terbaca jelas -> reset supaya bisa dicoba lagi tick berikutnya
                 isAutoAttendanceTriggered = false;
                 faceMatchStreak = 0;
@@ -2280,34 +2375,157 @@
                 return;
             }
 
-            // Kenali wajah LANGSUNG di browser dulu (1:N) supaya NIP & Nama guru bisa
-            // langsung ditampilkan di formulir sebelum absen benar-benar dikirim.
-            const identified = identifyKioskFace(globalFaceDescriptor);
-            if (!identified) {
-                showToast('Wajah tidak dikenali. Pastikan wajah sudah didaftarkan oleh Admin, lalu coba lagi dengan pencahayaan yang cukup.', 'error');
-                clearCapturedPhoto(false);
+            // Kenali SETIAP wajah yang terdeteksi (1:N per wajah), langsung di browser,
+            // supaya NIP & Nama semua guru yang dikenali bisa langsung ditampilkan.
+            const identifiedMap = new Map(); // nip -> {nip, nama, distance}
+            descriptors.forEach(desc => {
+                const match = identifyKioskFace(desc);
+                if (match && !identifiedMap.has(match.nip)) {
+                    identifiedMap.set(match.nip, match);
+                }
+            });
+            const identifiedList = Array.from(identifiedMap.values());
+
+            if (!identifiedList.length) {
+                showToast(`Terdeteksi ${descriptors.length} wajah, tapi belum ada yang dikenali. Pastikan wajah sudah didaftarkan oleh Admin.`, 'error');
                 isAutoAttendanceTriggered = false;
                 faceMatchStreak = 0;
                 updateAutoAttendanceBanner('idle');
                 return;
             }
 
-            kioskIdentified = identified;
+            globalBase64Photo = photo;
+            kioskIdentified = identifiedList[0];
             const nipField = document.getElementById('presensi-nip');
             const namaField = document.getElementById('presensi-nama');
-            if (nipField) nipField.value = identified.nip;
-            if (namaField) namaField.value = identified.nama;
-            showToast(`Wajah dikenali: ${identified.nama}. Mengirim absen...`, 'success');
+            const namesText = identifiedList.map(x => x.nama).join(', ');
+            if (nipField) nipField.value = identifiedList.map(x => x.nip).join(', ');
+            if (namaField) namaField.value = namesText;
+            showToast(
+                identifiedList.length > 1
+                    ? `${identifiedList.length} wajah dikenali: ${namesText}. Mengirim absen untuk semuanya...`
+                    : `Wajah dikenali: ${namesText}. Mengirim absen...`,
+                'success'
+            );
 
-            const form = document.getElementById('form-presensi');
-            if (form) {
-                if (typeof form.requestSubmit === 'function') {
-                    form.requestSubmit();
-                } else {
-                    form.dispatchEvent(new Event('submit', { cancelable: true }));
-                }
-            }
             updateAutoAttendanceBanner('submitting');
+            submitKioskGroupAttendance(identifiedList);
+        }
+
+        // Kirim absen rombongan (bisa 1 orang atau banyak sekaligus dari satu foto)
+        // ke server. Aturan lama (radius lokasi, jam Pulang mulai 14.00 WIB, satu
+        // kali per hari per guru) tetap divalidasi ulang di server.
+        function submitKioskGroupAttendance(identifiedList) {
+            if (isSubmittingPresensi) return;
+            const sinceLastSubmit = Date.now() - lastPresensiSubmitAt;
+            if (sinceLastSubmit < PRESENSI_SUBMIT_COOLDOWN_MS) {
+                resetKioskAutoLoopState();
+                resetKioskIdentityFields();
+                return;
+            }
+
+            const tipeVal = document.querySelector('input[name="tipe_absen"]:checked')?.value || 'Masuk';
+            if (tipeVal === 'Pulang' && !isPulangTimeAllowed()) {
+                showToast('Absen Pulang baru dapat dilakukan mulai pukul 14.00 WIB.', 'error');
+                resetKioskAutoLoopState();
+                resetKioskIdentityFields();
+                return;
+            }
+
+            lastPresensiSubmitAt = Date.now();
+            isSubmittingPresensi = true;
+
+            requestUserLocation((success) => {
+                if (!success || !isWithinAttendanceRadius) {
+                    isSubmittingPresensi = false;
+                    updatePresensiButtonState();
+                    resetKioskAutoLoopState();
+                    resetKioskIdentityFields();
+                    showToast(`Presensi hanya dapat dilakukan maksimal ${ATTENDANCE_RADIUS_METERS} meter dari kampus terdekat. Kampus terdeteksi: ${selectedSchoolName}. Jarak perangkat: ${globalDistance}.`, 'error');
+                    return;
+                }
+
+                const ketVal = document.getElementById('presensi-keterangan')?.value || 'Hadir';
+                const payload = {
+                    tipe: tipeVal,
+                    foto: globalBase64Photo,
+                    keterangan: `${ketVal} | Absen Rombongan (${identifiedList.length} orang)`,
+                    lokasi: globalCoordinates,
+                    jarak: globalDistance,
+                    nama_lokasi: selectedSchoolName,
+                    link_map: globalMapsLink,
+                    recognized: identifiedList.map(x => ({ nip: x.nip, nama: x.nama, distance: x.distance }))
+                };
+
+                const finish = (result) => {
+                    isSubmittingPresensi = false;
+                    updatePresensiButtonState();
+                    resetKioskAutoLoopState();
+                    resetKioskIdentityFields();
+
+                    if (result.success) {
+                        const inserted = result.inserted || [];
+                        const skipped = result.skipped || [];
+                        let msg = inserted.length
+                            ? `${inserted.length} guru berhasil absen ${tipeVal}: ${inserted.map(x => x.nama).join(', ')}`
+                            : `Tidak ada yang tersimpan baru (semua sudah absen ${tipeVal} hari ini).`;
+                        if (skipped.length) msg += ` — ${skipped.length} dilewati (sudah absen): ${skipped.map(x => x.nama).join(', ')}`;
+                        showToast(msg, inserted.length ? 'success' : 'error');
+                        resetPresensiForm();
+                    } else {
+                        showToast(result.message || 'Absen rombongan gagal disimpan.', 'error');
+                    }
+                };
+
+                if (IS_PREVIEW) {
+                    setTimeout(() => {
+                        const inserted = [];
+                        const skipped = [];
+                        identifiedList.forEach(person => {
+                            const isDuplicate = mockAttendanceDb.some(r =>
+                                r.nip === person.nip && normalizeDateToDDMMYYYY(r.tanggal) === getTodayDateString() && r.tipe === tipeVal
+                            );
+                            if (isDuplicate) {
+                                skipped.push({ nip: person.nip, nama: person.nama });
+                                return;
+                            }
+                            mockAttendanceDb.unshift({
+                                id: `${person.nip}${getTodayDateString().split('/').join('')}`,
+                                nip: person.nip, nama: person.nama,
+                                tanggal: getTodayDateString(),
+                                jam: new Date().toLocaleTimeString('id-ID') + ' WIB',
+                                tipe: tipeVal,
+                                keterangan: payload.keterangan,
+                                lokasi: payload.lokasi, jarak: payload.jarak,
+                                nama_lokasi: payload.nama_lokasi, link_map: payload.link_map,
+                                foto_link: globalBase64Photo,
+                                face_match: 'Cocok (Kiosk Rombongan, demo)', face_distance: person.distance
+                            });
+                            inserted.push({ nip: person.nip, nama: person.nama });
+                        });
+                        localStorage.setItem('mock_presensi', JSON.stringify(mockAttendanceDb));
+                        renderAttendanceTable(mockAttendanceDb);
+                        updateDashboardStats();
+                        finish({ success: true, inserted, skipped });
+                    }, 800);
+                    return;
+                }
+
+                fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ action: 'absenWajahMultiKiosk', data: JSON.stringify(payload) })
+                })
+                .then(res => res.json())
+                .then(result => finish(result))
+                .catch(err => {
+                    isSubmittingPresensi = false;
+                    updatePresensiButtonState();
+                    resetKioskAutoLoopState();
+                    resetKioskIdentityFields();
+                    showToast('Koneksi ke Apps Script bermasalah: ' + err, 'error');
+                });
+            });
         }
 
         // ---------- ADMIN: KELOLA WAJAH REFERENSI GURU ----------
@@ -3010,7 +3228,7 @@
             stopDeviceLocationTracking();
             fetchLocationsFromGAS();
             switchTab('presensi');
-            showToast('Mode Kiosk aktif. Arahkan wajah ke kamera — foto & absen terkirim otomatis begitu wajah dikenali.', 'info');
+            showToast('Mode Kiosk aktif. Arahkan wajah ke kamera (bisa beberapa orang sekaligus) — foto & absen terkirim otomatis begitu wajah dikenali.', 'info');
         }
 
         function loadDatabaseData() {
@@ -6161,11 +6379,151 @@ function applyDateFilters() {
             if (!currentSession || currentSession.role !== 'Admin') return;
             populateMonthlyTeacherReportTeacherOptions();
             renderHolidayTable();
+            renderBulkAttendanceGuruList();
             const bulanSelect = document.getElementById('monthly-report-bulan');
             const tahunInput = document.getElementById('monthly-report-tahun');
             const now = new Date();
             if (bulanSelect && !bulanSelect.dataset.touched) bulanSelect.value = String(now.getMonth());
             if (tahunInput && !tahunInput.value) tahunInput.value = String(now.getFullYear());
+            const bulkTanggalInput = document.getElementById('bulk-attendance-tanggal');
+            if (bulkTanggalInput && !bulkTanggalInput.value) {
+                bulkTanggalInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            }
+        }
+
+        // ---------- ABSEN MASSAL (ADMIN): presensi banyak guru sekaligus tanpa wajah ----------
+        function renderBulkAttendanceGuruList() {
+            const container = document.getElementById('bulk-attendance-guru-list');
+            if (!container) return;
+            const teachers = getActiveTeacherUsers().sort((a, b) =>
+                String(a.nama || '').localeCompare(String(b.nama || ''), 'id', { sensitivity: 'base' })
+            );
+            if (!teachers.length) {
+                container.innerHTML = '<p class="p-6 text-center text-xs text-slate-400">Belum ada data guru aktif.</p>';
+                updateBulkAttendanceSelectedCount();
+                return;
+            }
+            container.innerHTML = teachers.map(user => {
+                const nip = escapeHtml(String(user.nip || user.username || ''));
+                const nama = escapeHtml(String(user.nama || '-'));
+                return `
+                <label class="flex items-center gap-3 px-4 py-2.5 text-xs cursor-pointer hover:bg-slate-50">
+                    <input type="checkbox" class="bulk-attendance-guru-checkbox w-4 h-4 accent-indigo-600" value="${nip}" data-nama="${nama}" onchange="updateBulkAttendanceSelectedCount()">
+                    <span class="font-semibold text-slate-700">${nama}</span>
+                    <span class="text-slate-400">(${nip})</span>
+                </label>`;
+            }).join('');
+            updateBulkAttendanceSelectedCount();
+        }
+
+        function toggleAllBulkAttendanceGuru(checked) {
+            document.querySelectorAll('.bulk-attendance-guru-checkbox').forEach(cb => { cb.checked = checked; });
+            updateBulkAttendanceSelectedCount();
+        }
+
+        function updateBulkAttendanceSelectedCount() {
+            const checked = document.querySelectorAll('.bulk-attendance-guru-checkbox:checked');
+            const badge = document.getElementById('bulk-attendance-selected-count');
+            if (badge) badge.textContent = `${checked.length} dipilih`;
+            const selectAll = document.getElementById('bulk-attendance-select-all');
+            const total = document.querySelectorAll('.bulk-attendance-guru-checkbox').length;
+            if (selectAll) selectAll.checked = total > 0 && checked.length === total;
+        }
+
+        function submitBulkAttendance() {
+            if (!currentSession || currentSession.role !== 'Admin') return;
+            const checked = Array.from(document.querySelectorAll('.bulk-attendance-guru-checkbox:checked'));
+            if (!checked.length) {
+                showToast('Pilih minimal satu guru terlebih dahulu.', 'error');
+                return;
+            }
+            const tipeVal = document.querySelector('input[name="bulk-tipe-absen"]:checked')?.value || 'Masuk';
+            const tanggalInput = document.getElementById('bulk-attendance-tanggal');
+            const keteranganInput = document.getElementById('bulk-attendance-keterangan');
+            if (!tanggalInput?.value) {
+                showToast('Pilih tanggal absen terlebih dahulu.', 'error');
+                return;
+            }
+            const tanggalDdMmYyyy = isoToDdMmYyyy(tanggalInput.value);
+            const keterangan = keteranganInput?.value.trim() || 'Hadir (Absen Massal oleh Admin)';
+            const nipList = checked.map(cb => cb.value);
+
+            const btn = document.getElementById('btn-submit-bulk-attendance');
+            const resultBox = document.getElementById('bulk-attendance-result');
+            btn.disabled = true;
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Menyimpan...';
+            if (resultBox) resultBox.classList.add('hidden');
+
+            const finish = (result) => {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+                if (!resultBox) return;
+                resultBox.classList.remove('hidden');
+                if (!result.success) {
+                    resultBox.className = 'text-xs rounded-xl p-3 leading-relaxed bg-rose-50 text-rose-700 border border-rose-100';
+                    resultBox.innerHTML = escapeHtml(result.message || 'Absen massal gagal disimpan.');
+                    showToast(result.message || 'Absen massal gagal disimpan.', 'error');
+                    return;
+                }
+                const insertedCount = (result.inserted || []).length;
+                const skipped = result.skipped || [];
+                resultBox.className = 'text-xs rounded-xl p-3 leading-relaxed bg-emerald-50 text-emerald-700 border border-emerald-100';
+                let html = `<b>${insertedCount} guru</b> berhasil dicatat Absen ${tipeVal} pada ${tanggalDdMmYyyy}.`;
+                if (skipped.length) {
+                    html += `<br><span class="text-amber-700">${skipped.length} dilewati (sudah absen sebelumnya):</span> ${skipped.map(s => escapeHtml(s.nama || s.nip)).join(', ')}`;
+                }
+                resultBox.innerHTML = html;
+                showToast(`${insertedCount} guru berhasil dicatat Absen ${tipeVal}.`, 'success');
+                document.querySelectorAll('.bulk-attendance-guru-checkbox:checked').forEach(cb => { cb.checked = false; });
+                updateBulkAttendanceSelectedCount();
+            };
+
+            if (IS_PREVIEW) {
+                setTimeout(() => {
+                    const inserted = [];
+                    const skipped = [];
+                    checked.forEach(cb => {
+                        const nip = cb.value;
+                        const nama = cb.dataset.nama || nip;
+                        const isDuplicate = mockAttendanceDb.some(r =>
+                            r.nip === nip && normalizeDateToDDMMYYYY(r.tanggal) === tanggalDdMmYyyy && r.tipe === tipeVal
+                        );
+                        if (isDuplicate) {
+                            skipped.push({ nip, nama, reason: 'Sudah absen' });
+                            return;
+                        }
+                        mockAttendanceDb.unshift({
+                            id: `${nip}${tanggalDdMmYyyy.split('/').join('')}`,
+                            nip, nama,
+                            tanggal: tanggalDdMmYyyy,
+                            jam: new Date().toLocaleTimeString('id-ID') + ' WIB',
+                            tipe: tipeVal,
+                            keterangan,
+                            lokasi: '', jarak: '', nama_lokasi: '', link_map: '', foto_link: '',
+                            face_match: 'Absen Massal (Admin)', face_distance: ''
+                        });
+                        inserted.push({ nip, nama });
+                    });
+                    localStorage.setItem('mock_presensi', JSON.stringify(mockAttendanceDb));
+                    renderAttendanceTable(mockAttendanceDb);
+                    updateDashboardStats();
+                    finish({ success: true, inserted, skipped });
+                }, 600);
+                return;
+            }
+
+            fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    action: 'simpanPresensiMassal',
+                    data: JSON.stringify({ tipe: tipeVal, tanggal: tanggalDdMmYyyy, keterangan, nipList })
+                })
+            })
+            .then(res => res.json())
+            .then(result => finish(result))
+            .catch(err => finish({ success: false, message: 'Koneksi ke Apps Script bermasalah: ' + err }));
         }
 
         // Menghitung data satu guru untuk satu bulan: rincian harian + rekapitulasi.
