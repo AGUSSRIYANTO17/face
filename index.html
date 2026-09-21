@@ -488,7 +488,7 @@
                         </button>
                     </div>
                     <p id="presensi-manual-actions-hint" class="text-[10px] text-center text-slate-400 -mt-1"><i class="fa-solid fa-circle-info"></i> Kalau Absen Otomatis nonaktif atau wajah belum terdaftar, gunakan tombol "Ambil Foto Manual" lalu "Kirim Absen".</p>
-                    <p id="kiosk-auto-hint" class="hidden text-[10px] text-center text-emerald-600 font-semibold -mt-1"><i class="fa-solid fa-bolt"></i> Mode Kiosk: arahkan wajah (bisa lebih dari satu orang) ke kamera, foto & absen terkirim otomatis.</p>
+                    <p id="kiosk-auto-hint" class="hidden text-[10px] text-center text-emerald-600 font-semibold -mt-1"><i class="fa-solid fa-bolt"></i> Mode Kiosk: tahan wajah (bisa lebih dari satu orang) ke kamera selama beberapa detik, foto & absen terkirim otomatis.</p>
 
                 </div>
 
@@ -1458,14 +1458,16 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbysEboo3ShyLLzFS5EWC8LVisGfMqzabUbb2B0Q_Z0K1JrKj8X3f3Nk-pi1jgE2Yfa4/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby389X8zGuIWcVnVzFcKruWINgfZ-zC6AaMzVrbZzOS7-mg6XRMyx_aY6-K8ZQz-zUrWw/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
         let currentSession = null;
         let isKioskMode = false; // true = mode "Absen Wajah (Semua Guru)" dari layar depan, tanpa login per-guru
         let kioskFaceDatabase = []; // [{nip, nama, descriptor}] -- dimuat saat masuk Mode Kiosk, dipakai untuk pencocokan 1:N di browser
-        let kioskIdentified = null; // {nip, nama, distance} guru yang terakhir dikenali di Mode Kiosk 
+        let kioskIdentified = null; // {nip, nama, distance} guru yang terakhir dikenali di Mode Kiosk
+        let kioskLastSubmitByNip = {}; // nip -> timestamp terakhir dicoba absen (jeda PER ORANG, bukan global) supaya tidak dobel
+        const KIOSK_PER_PERSON_COOLDOWN_MS = 15000; // 15 detik jeda per guru yang sama sebelum dicoba absen lagi di kiosk 
         let mockAttendanceDb = [];
         let mockJurnalDb = [];
         let mockUsersDb = [];
@@ -1729,8 +1731,12 @@
         let isAutoAttendanceTriggered = false;
         let pulangAutoSwitchDone = false; // Agar auto-pindah ke tab Pulang (>=15.00 WIB) hanya terjadi sekali per sesi   // supaya hanya trigger 1x sampai berhasil/kondisi berubah
         let autoAttendanceModeEnabled = true;    // guru bisa nonaktifkan & pakai mode manual bila mau
-        const AUTO_ATTENDANCE_STREAK_REQUIRED = 3;  // jumlah deteksi cocok berturut-turut sebelum auto kirim
         const AUTO_RECOGNITION_INTERVAL_MS = 700;   // jeda antar pengecekan wajah (ms)
+        // Wajah harus terdeteksi hidup & stabil di depan kamera selama sekian detik
+        // berturut-turut (referensi wajah "live") sebelum absen otomatis terkirim --
+        // supaya tidak asal jepret dari wajah yang cuma lewat sekilas/buram.
+        const AUTO_ATTENDANCE_HOLD_SECONDS = 3;
+        const AUTO_ATTENDANCE_STREAK_REQUIRED = Math.max(1, Math.round((AUTO_ATTENDANCE_HOLD_SECONDS * 1000) / AUTO_RECOGNITION_INTERVAL_MS));  // jumlah deteksi berturut-turut yang setara dengan durasi di atas
 
         const faceRecognitionStatusBadge = document.getElementById('face-recognition-status');
         const faceMatchBadge = document.getElementById('face-match-badge');
@@ -2215,8 +2221,10 @@
                 banner.className = 'absolute inset-x-0 top-0 z-30 bg-emerald-600/95 text-white text-[11px] font-bold px-3 py-2 text-center';
                 textEl.innerHTML = '<i class="fa-solid fa-face-viewfinder"></i> Absen Otomatis Aktif — arahkan wajah ke kamera';
             } else if (state === 'matching') {
+                const elapsedSec = Math.min(AUTO_ATTENDANCE_HOLD_SECONDS, (Number(extra) || 0) * (AUTO_RECOGNITION_INTERVAL_MS / 1000));
+                const remainingSec = Math.max(0, AUTO_ATTENDANCE_HOLD_SECONDS - elapsedSec);
                 banner.className = 'absolute inset-x-0 top-0 z-30 bg-indigo-600/95 text-white text-[11px] font-bold px-3 py-2 text-center animate-pulse';
-                textEl.innerHTML = `<i class="fa-solid fa-fingerprint"></i> Wajah dikenali... (${extra}/${AUTO_ATTENDANCE_STREAK_REQUIRED})`;
+                textEl.innerHTML = `<i class="fa-solid fa-fingerprint"></i> Wajah dikenali... tahan ${remainingSec.toFixed(1)} detik lagi`;
             } else if (state === 'mismatch') {
                 banner.className = 'absolute inset-x-0 top-0 z-30 bg-rose-600/95 text-white text-[11px] font-bold px-3 py-2 text-center';
                 textEl.innerHTML = '<i class="fa-solid fa-user-xmark"></i> Wajah tidak dikenali sebagai Anda';
@@ -2378,21 +2386,43 @@
             // Kenali SETIAP wajah yang terdeteksi (1:N per wajah), langsung di browser,
             // supaya NIP & Nama semua guru yang dikenali bisa langsung ditampilkan.
             const identifiedMap = new Map(); // nip -> {nip, nama, distance}
+            const ambiguousNames = [];
             descriptors.forEach(desc => {
                 const match = identifyKioskFace(desc);
-                if (match && !identifiedMap.has(match.nip)) {
-                    identifiedMap.set(match.nip, match);
+                if (!match) return;
+                if (match.ambiguous) {
+                    ambiguousNames.push(match.candidateNames.join(' / '));
+                    return;
                 }
+                if (!identifiedMap.has(match.nip)) identifiedMap.set(match.nip, match);
             });
-            const identifiedList = Array.from(identifiedMap.values());
+
+            // Jeda per-orang: kalau seseorang baru saja absen (masih dalam jangkauan
+            // kamera / berdiri lama), jangan diproses ulang setiap tick supaya tidak
+            // dobel & tidak membanjiri server dengan permintaan yang sama berulang.
+            const now = Date.now();
+            let identifiedList = Array.from(identifiedMap.values()).filter(match => {
+                const lastAttempt = kioskLastSubmitByNip[match.nip] || 0;
+                return (now - lastAttempt) >= KIOSK_PER_PERSON_COOLDOWN_MS;
+            });
+
+            if (ambiguousNames.length) {
+                showToast(`Ada wajah yang mirip antar guru (${ambiguousNames.join('; ')}) sehingga tidak bisa dipastikan otomatis. Guru tersebut silakan absen lewat login akun pribadi.`, 'error');
+            }
 
             if (!identifiedList.length) {
-                showToast(`Terdeteksi ${descriptors.length} wajah, tapi belum ada yang dikenali. Pastikan wajah sudah didaftarkan oleh Admin.`, 'error');
+                if (!ambiguousNames.length) {
+                    showToast(`Terdeteksi ${descriptors.length} wajah, tapi belum ada yang dikenali/baru saja absen. Pastikan wajah sudah didaftarkan oleh Admin.`, 'error');
+                }
                 isAutoAttendanceTriggered = false;
                 faceMatchStreak = 0;
                 updateAutoAttendanceBanner('idle');
                 return;
             }
+
+            // Tandai lebih dulu (optimistic) supaya tick berikutnya tidak langsung
+            // memproses ulang orang yang sama selagi masih berdiri di depan kamera.
+            identifiedList.forEach(p => { kioskLastSubmitByNip[p.nip] = now; });
 
             globalBase64Photo = photo;
             kioskIdentified = identifiedList[0];
@@ -2416,13 +2446,11 @@
         // ke server. Aturan lama (radius lokasi, jam Pulang mulai 14.00 WIB, satu
         // kali per hari per guru) tetap divalidasi ulang di server.
         function submitKioskGroupAttendance(identifiedList) {
+            // Catatan: jeda anti-dobel di kiosk sudah ditangani PER ORANG di
+            // triggerKioskAutoAttendance (kioskLastSubmitByNip), bukan jeda global,
+            // supaya satu guru yang baru absen tidak ikut memblokir guru lain yang
+            // baru datang beberapa detik kemudian.
             if (isSubmittingPresensi) return;
-            const sinceLastSubmit = Date.now() - lastPresensiSubmitAt;
-            if (sinceLastSubmit < PRESENSI_SUBMIT_COOLDOWN_MS) {
-                resetKioskAutoLoopState();
-                resetKioskIdentityFields();
-                return;
-            }
 
             const tipeVal = document.querySelector('input[name="tipe_absen"]:checked')?.value || 'Masuk';
             if (tipeVal === 'Pulang' && !isPulangTimeAllowed()) {
@@ -3171,18 +3199,32 @@
 
         // Cocokkan satu descriptor wajah live terhadap SELURUH data di kioskFaceDatabase,
         // kembalikan guru dengan jarak (distance) terkecil bila di bawah ambang batas.
+        // Selisih minimal antara jarak kandidat terbaik & kandidat kedua-terbaik.
+        // Kalau selisihnya terlalu tipis, artinya sistem tidak bisa memastikan
+        // secara percaya diri wajah ini milik siapa (ada guru lain yang wajahnya
+        // mirip) -- lebih aman ditolak daripada asal pilih yang terdekat.
+        const FACE_AMBIGUITY_MARGIN = 0.08;
+
         function identifyKioskFace(liveDescriptor) {
-            let best = null;
-            let bestDistance = Infinity;
+            const candidates = [];
             (kioskFaceDatabase || []).forEach(ref => {
                 if (!Array.isArray(ref.descriptor) || ref.descriptor.length !== 128) return;
                 const distance = euclideanFaceDistance(liveDescriptor, ref.descriptor);
-                if (distance < bestDistance) { bestDistance = distance; best = ref; }
+                candidates.push({ nip: ref.nip, nama: ref.nama, distance });
             });
-            if (best && bestDistance <= FACE_MATCH_THRESHOLD) {
-                return { nip: best.nip, nama: best.nama, distance: bestDistance };
+            if (!candidates.length) return null;
+
+            candidates.sort((a, b) => a.distance - b.distance);
+            const best = candidates[0];
+            if (best.distance > FACE_MATCH_THRESHOLD) return null;
+
+            // Kandidat lain (guru berbeda) dengan jarak paling dekat ke-2.
+            const runnerUp = candidates.find(c => c.nip !== best.nip);
+            if (runnerUp && (runnerUp.distance - best.distance) < FACE_AMBIGUITY_MARGIN) {
+                return { ambiguous: true, candidateNames: [best.nama, runnerUp.nama] };
             }
-            return null;
+
+            return { nip: best.nip, nama: best.nama, distance: best.distance };
         }
 
         function enterKioskMode() {
@@ -3190,6 +3232,7 @@
             isKioskMode = true;
             pulangAutoSwitchDone = false;
             kioskIdentified = null;
+            kioskLastSubmitByNip = {};
             fetchEnrolledFaceDescriptor();
             fetchKioskFaceDatabase();
 
