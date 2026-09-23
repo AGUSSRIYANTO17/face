@@ -521,14 +521,23 @@
                             <p class="text-[9px] text-slate-400 mt-1">Sistem memilih kampus dengan jarak GPS paling dekat. Presensi hanya valid jika jaraknya maksimal <b>200 meter</b>.</p>
                         </div>
 
-                        <div class="flex flex-col gap-1">
+                        <div id="presensi-nip-field-wrapper" class="flex flex-col gap-1">
                             <label class="text-xs font-bold text-slate-500">NIP / ID Guru</label>
                             <input type="text" id="presensi-nip" readonly class="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium bg-slate-50 text-slate-600 cursor-not-allowed">
                         </div>
 
-                        <div class="flex flex-col gap-1">
+                        <div id="presensi-nama-field-wrapper" class="flex flex-col gap-1">
                             <label class="text-xs font-bold text-slate-500">Nama Lengkap</label>
                             <input type="text" id="presensi-nama" readonly class="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium bg-slate-50 text-slate-600 cursor-not-allowed">
+                        </div>
+
+                        <!-- Mode Kiosk: daftar NIP + Nama guru selalu mengikuti jumlah wajah
+                             yang sedang terlihat di kamera (live, update tiap tick). -->
+                        <div id="kiosk-detected-people-wrapper" class="hidden flex-col gap-1">
+                            <label class="text-xs font-bold text-slate-500">Guru Terdeteksi di Kamera (<span id="kiosk-detected-count">0</span> wajah)</label>
+                            <div id="kiosk-detected-people-list" class="flex flex-col gap-1.5 max-h-44 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50">
+                                <p class="text-xs text-slate-400 text-center py-2">Belum ada wajah terdeteksi...</p>
+                            </div>
                         </div>
 
                         <div class="flex flex-col gap-1">
@@ -1776,6 +1785,57 @@
         }
 
         // Menghitung descriptor wajah (128 angka) dari sebuah canvas/gambar.
+        // ---------- SUARA NOTIFIKASI ABSEN (Masuk/Pulang berhasil) ----------
+        // Disintesis langsung (tanpa file audio eksternal) supaya selalu bisa
+        // dipakai walau tanpa koneksi internet. Konteks audionya di-"unlock" saat
+        // ada klik pengguna (login / masuk Mode Kiosk) agar kebijakan autoplay
+        // browser tidak memblokir bunyi saat absen terkirim otomatis (mis. di Kiosk).
+        let sharedAudioCtx = null;
+        function getAudioCtx() {
+            try {
+                if (!sharedAudioCtx) {
+                    const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioCtxClass) return null;
+                    sharedAudioCtx = new AudioCtxClass();
+                }
+                if (sharedAudioCtx.state === 'suspended') {
+                    sharedAudioCtx.resume().catch(() => {});
+                }
+                return sharedAudioCtx;
+            } catch (err) {
+                return null;
+            }
+        }
+
+        // Bunyi "ding-dong" KERAS saat absen Masuk/Pulang berhasil tercatat, supaya
+        // guru langsung tahu presensinya sukses walau tidak sempat melihat layar --
+        // terutama berguna di Mode Kiosk yang serba otomatis.
+        function playAttendanceSuccessSound() {
+            const ctx = getAudioCtx();
+            if (!ctx) return;
+            try {
+                const now = ctx.currentTime;
+                const playTone = (freq, startTime, duration, gainValue) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, startTime);
+                    gain.gain.setValueAtTime(0, startTime);
+                    gain.gain.linearRampToValueAtTime(gainValue, startTime + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(startTime);
+                    osc.stop(startTime + duration + 0.05);
+                };
+                // Nada naik (ding lalu dong), volume tinggi supaya terdengar jelas.
+                playTone(880, now, 0.18, 0.9);
+                playTone(1174.66, now + 0.15, 0.32, 0.9);
+            } catch (err) {
+                console.warn('Gagal memutar suara notifikasi absen:', err);
+            }
+        }
+
         async function computeLiveFaceDescriptor(sourceCanvas) {
             const ready = await ensureFaceApiModelsLoaded();
             if (!ready) return null;
@@ -2332,14 +2392,22 @@
 
             if (!isWithinAttendanceRadius) {
                 faceMatchStreak = 0;
+                renderKioskDetectedPeople([]);
                 updateAutoAttendanceBanner('out-of-range');
                 return;
             }
             if (!isFaceDetected) {
                 faceMatchStreak = 0;
+                renderKioskDetectedPeople([]);
                 updateAutoAttendanceBanner('no-face');
                 return;
             }
+
+            // Kenali wajah yang SEDANG terlihat di kamera saat ini, lalu tampilkan
+            // daftar NIP & Nama -- jumlahnya otomatis mengikuti berapa banyak wajah
+            // yang terdeteksi di layar kamera saat ini (live, tiap tick).
+            const { list: liveList, ambiguousNames: liveAmbiguous } = await identifyFacesInCurrentFrame();
+            renderKioskDetectedPeople(liveList, liveAmbiguous);
 
             faceMatchStreak++;
             updateAutoAttendanceBanner('matching', faceMatchStreak);
@@ -2348,6 +2416,68 @@
                 updateAutoAttendanceBanner('submitting');
                 await triggerKioskAutoAttendance();
             }
+        }
+
+        // Ambil frame kamera saat ini (tanpa menyimpannya sebagai foto final) dan
+        // kenali SEMUA wajah yang tampak, untuk ditampilkan sebagai pratinjau live
+        // di daftar "Guru Terdeteksi di Kamera".
+        async function identifyFacesInCurrentFrame() {
+            if (!cameraActive || !videoElement) return { list: [], ambiguousNames: [] };
+
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth || 640;
+            canvas.height = videoElement.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+            const descriptors = await computeAllLiveFaceDescriptors(canvas);
+            const map = new Map();
+            const ambiguousNames = [];
+            descriptors.forEach(desc => {
+                const match = identifyKioskFace(desc);
+                if (!match) return;
+                if (match.ambiguous) { ambiguousNames.push(match.candidateNames.join(' / ')); return; }
+                if (!map.has(match.nip)) map.set(match.nip, match);
+            });
+            return { list: Array.from(map.values()), ambiguousNames };
+        }
+
+        // Perbarui daftar "Guru Terdeteksi di Kamera" di Mode Kiosk -- satu kartu
+        // per wajah yang dikenali, jumlahnya selalu mengikuti wajah yang terlihat.
+        function renderKioskDetectedPeople(list, ambiguousNames = []) {
+            const countEl = document.getElementById('kiosk-detected-count');
+            const listEl = document.getElementById('kiosk-detected-people-list');
+            if (!listEl) return;
+
+            const identifiedCount = (list || []).length;
+            const ambiguousCount = (ambiguousNames || []).length;
+            if (countEl) countEl.textContent = String(identifiedCount + ambiguousCount);
+
+            if (!identifiedCount && !ambiguousCount) {
+                listEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-2">Belum ada wajah terdeteksi...</p>';
+                return;
+            }
+
+            let html = (list || []).map(p => `
+                <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white border border-emerald-100">
+                    <div>
+                        <div class="text-xs font-bold text-slate-800">${escapeHtml(p.nama)}</div>
+                        <div class="text-[10px] text-slate-400 font-mono">${escapeHtml(p.nip)}</div>
+                    </div>
+                    <span class="text-[10px] font-bold text-emerald-600 whitespace-nowrap"><i class="fa-solid fa-circle-check"></i> Dikenali</span>
+                </div>
+            `).join('');
+
+            html += (ambiguousNames || []).map(names => `
+                <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-100">
+                    <div class="text-xs font-bold text-amber-700">${escapeHtml(names)}</div>
+                    <span class="text-[10px] font-bold text-amber-600 whitespace-nowrap"><i class="fa-solid fa-triangle-exclamation"></i> Mirip</span>
+                </div>
+            `).join('');
+
+            listEl.innerHTML = html;
         }
 
         // Ambil satu frame kamera sebagai foto rombongan, lalu deteksi & hitung
@@ -2431,6 +2561,7 @@
             const namesText = identifiedList.map(x => x.nama).join(', ');
             if (nipField) nipField.value = identifiedList.map(x => x.nip).join(', ');
             if (namaField) namaField.value = namesText;
+            renderKioskDetectedPeople(identifiedList); // daftar final yang akan dikirim, sesuai jumlah wajah yang dikenali
             showToast(
                 identifiedList.length > 1
                     ? `${identifiedList.length} wajah dikenali: ${namesText}. Mengirim absen untuk semuanya...`
@@ -2499,6 +2630,7 @@
                             : `Tidak ada yang tersimpan baru (semua sudah absen ${tipeVal} hari ini).`;
                         if (skipped.length) msg += ` — ${skipped.length} dilewati (sudah absen): ${skipped.map(x => x.nama).join(', ')}`;
                         showToast(msg, inserted.length ? 'success' : 'error');
+                        if (inserted.length) playAttendanceSuccessSound();
                         resetPresensiForm();
                     } else {
                         showToast(result.message || 'Absen rombongan gagal disimpan.', 'error');
@@ -3061,6 +3193,7 @@
         }
 
         function loginSuccess() {
+            getAudioCtx(); // unlock audio (dipicu klik tombol Login) supaya bunyi notifikasi absen tidak diblokir browser
             showToast(`Selamat datang kembali, ${currentSession.nama}!`, "success");
             fetchEnrolledFaceDescriptor(); // cek status wajah referensi guru ini, siap dipakai saat presensi
             
@@ -3152,6 +3285,12 @@
                     const el = document.getElementById(id);
                     if (el) el.classList.remove('hidden');
                 });
+                const nipWrapper = document.getElementById('presensi-nip-field-wrapper');
+                const namaWrapper = document.getElementById('presensi-nama-field-wrapper');
+                if (nipWrapper) nipWrapper.classList.remove('hidden');
+                if (namaWrapper) namaWrapper.classList.remove('hidden');
+                const detectedWrapper = document.getElementById('kiosk-detected-people-wrapper');
+                if (detectedWrapper) { detectedWrapper.classList.add('hidden'); detectedWrapper.classList.remove('flex'); }
             }
             document.getElementById('login-screen').classList.remove('hidden');
             document.getElementById('main-workspace').classList.add('hidden');
@@ -3228,6 +3367,7 @@
         }
 
         function enterKioskMode() {
+            getAudioCtx(); // unlock audio (dipicu klik tombol Absen Wajah) supaya bunyi notifikasi absen tidak diblokir browser
             currentSession = { username: 'kiosk', nama: 'Mode Kiosk (Semua Guru)', nip: '', role: 'Kiosk' };
             isKioskMode = true;
             pulangAutoSwitchDone = false;
@@ -3238,10 +3378,16 @@
 
             document.getElementById('current-user-display').innerText = 'Mode Kiosk — Semua Guru';
             document.getElementById('app-badge-role').innerText = 'KIOSK ABSEN WAJAH';
-            const nipField = document.getElementById('presensi-nip');
-            const namaField = document.getElementById('presensi-nama');
-            if (nipField) nipField.value = 'Dikenali otomatis dari wajah';
-            if (namaField) namaField.value = 'Dikenali otomatis dari wajah';
+
+            // Ganti field NIP/Nama satu-baris (untuk 1 orang) dengan daftar yang
+            // mengikuti jumlah wajah yang terdeteksi di kamera (bisa banyak sekaligus).
+            const nipWrapper = document.getElementById('presensi-nip-field-wrapper');
+            const namaWrapper = document.getElementById('presensi-nama-field-wrapper');
+            if (nipWrapper) nipWrapper.classList.add('hidden');
+            if (namaWrapper) namaWrapper.classList.add('hidden');
+            const detectedWrapper = document.getElementById('kiosk-detected-people-wrapper');
+            if (detectedWrapper) { detectedWrapper.classList.remove('hidden'); detectedWrapper.classList.add('flex'); }
+            renderKioskDetectedPeople([]);
 
             // Sembunyikan seluruh tab lain -- kiosk hanya menampilkan tab Presensi.
             ['btn-tab-dashboard', 'btn-tab-status-kehadiran', 'btn-tab-jurnal', 'btn-tab-rekap-jurnal', 'btn-tab-rekap', 'btn-tab-admin-menu', 'btn-tab-ganti-password'].forEach(id => {
@@ -4818,6 +4964,7 @@ checkTodayAttendanceStatus();
                         updateDashboardStats();
 
                         showDialog("Presensi Berhasil (Demo)", `Presensi ${tipeVal} di cabang ${selectedSchoolName} berhasil didaftarkan secara lokal! Koordinat perangkat Anda (${payload.lokasi}) tercatat di sistem.`, "success");
+                        playAttendanceSuccessSound();
                         resetPresensiForm();
                     }, 1000);
                 } else {
@@ -4861,7 +5008,7 @@ checkTodayAttendanceStatus();
                             }
 
                             showDialog("Presensi Sukses", `Absensi ${tipeVal} Anda di cabang ${selectedSchoolName} berhasil tersimpan di Google Sheet! Koordinat perangkat (${payload.lokasi}) tervalidasi.`, "success");
-                            
+                            playAttendanceSuccessSound();
                             resetPresensiForm();
                         } else {
                             // Menampilkan pesan kesalahan dari respons backend (seperti duplikasi absen)
@@ -4898,6 +5045,7 @@ checkTodayAttendanceStatus();
             const namaField = document.getElementById('presensi-nama');
             if (nipField) nipField.value = 'Dikenali otomatis dari wajah';
             if (namaField) namaField.value = 'Dikenali otomatis dari wajah';
+            renderKioskDetectedPeople([]);
         }
 
         function submitKioskPresensi(payload, ctx) {
@@ -4945,6 +5093,7 @@ checkTodayAttendanceStatus();
                     localStorage.setItem('mock_presensi', JSON.stringify(mockAttendanceDb));
 
                     showToast(`${best.nama} — Absen ${payload.tipe} berhasil dicatat (mode demo lokal).`, 'success');
+                    playAttendanceSuccessSound();
                     resetKioskIdentityFields();
                     resetPresensiForm();
                 }, 1000);
@@ -4968,6 +5117,7 @@ checkTodayAttendanceStatus();
 
                 if (response.success) {
                     showToast(`${response.nama || payload.nama} — Absen ${response.tipe || payload.tipe} berhasil dicatat pukul ${ctx.timestamp.toLocaleTimeString('id-ID')} WIB.`, 'success');
+                    playAttendanceSuccessSound();
                     resetKioskIdentityFields();
                     resetPresensiForm();
                 } else {
@@ -5343,11 +5493,39 @@ checkTodayAttendanceStatus();
                     </td>
                     <td class="py-4 px-6">
                         <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">${r.keterangan}</span>
+                        <div class="mt-1.5">${getAttendanceSourceBadge(r.face_match)}</div>
                     </td>
                     <td class="py-4 px-6">${previewFoto}</td>
                 `;
                 tableBody.appendChild(tr);
             });
+        }
+
+        // Ubah nilai kolom face_match (teknis) jadi badge kecil yang mudah dipahami
+        // guru/admin di tabel Riwayat & Rekap: dari mana asal presensi itu tercatat.
+        function getAttendanceSourceBadge(faceMatch) {
+            const val = String(faceMatch || '').trim();
+            if (!val) return '';
+            const base = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border';
+            if (val.startsWith('Cocok (Kiosk Rombongan')) {
+                return `<span class="${base} bg-teal-50 text-teal-700 border-teal-100"><i class="fa-solid fa-people-group"></i> Kiosk Rombongan</span>`;
+            }
+            if (val.startsWith('Cocok (Kiosk')) {
+                return `<span class="${base} bg-emerald-50 text-emerald-700 border-emerald-100"><i class="fa-solid fa-camera"></i> Kiosk Wajah</span>`;
+            }
+            if (val === 'Cocok') {
+                return `<span class="${base} bg-indigo-50 text-indigo-700 border-indigo-100"><i class="fa-solid fa-user-check"></i> Wajah (Mandiri)</span>`;
+            }
+            if (val === 'Tidak Cocok') {
+                return `<span class="${base} bg-rose-50 text-rose-700 border-rose-100"><i class="fa-solid fa-user-xmark"></i> Wajah Tidak Cocok</span>`;
+            }
+            if (val === 'Belum Terdaftar') {
+                return `<span class="${base} bg-slate-50 text-slate-500 border-slate-200"><i class="fa-solid fa-user-slash"></i> Wajah Belum Terdaftar</span>`;
+            }
+            if (val.startsWith('Absen Massal')) {
+                return `<span class="${base} bg-amber-50 text-amber-700 border-amber-100"><i class="fa-solid fa-user-pen"></i> Input Admin</span>`;
+            }
+            return `<span class="${base} bg-slate-50 text-slate-500 border-slate-200"><i class="fa-solid fa-circle-info"></i> ${escapeHtml(val)}</span>`;
         }
 
         // Filter Handlers
@@ -5727,7 +5905,10 @@ function applyDateFilters() {
                         <td class="py-3 px-5 whitespace-nowrap">${escapeHtml(formatJamIndonesia(row.jam || '-'))}</td>
                         <td class="py-3 px-5">${escapeHtml(row.nama_lokasi || row.lokasi || '-')}</td>
                         <td class="py-3 px-5 whitespace-nowrap font-semibold">${escapeHtml(row.jarak || '-')}</td>
-                        <td class="py-3 px-5">${escapeHtml(statusDescription(row) || '-')}</td>
+                        <td class="py-3 px-5">
+                            <div>${escapeHtml(statusDescription(row) || '-')}</div>
+                            <div class="mt-1">${getAttendanceSourceBadge(row.face_match)}</div>
+                        </td>
                     </tr>`;
                 }).join('');
             }
