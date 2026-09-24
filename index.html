@@ -1467,7 +1467,7 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbxZJnHks-zSY42ehdXMmgyuShqyiZqlNc7q2UOwH0EdmuhV9pFR18niurqcupB5s1LS/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby389X8zGuIWcVnVzFcKruWINgfZ-zC6AaMzVrbZzOS7-mg6XRMyx_aY6-K8ZQz-zUrWw/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
@@ -1887,10 +1887,7 @@
                 utter.rate = 0.95;
                 utter.pitch = 1;
                 utter.volume = 1;
-
-                const voices = cachedSpeechVoices.length ? cachedSpeechVoices : window.speechSynthesis.getVoices();
-                const idVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('id'));
-                if (idVoice) utter.voice = idVoice;
+                applyFemaleVoice(utter);
 
                 // TIDAK di-cancel() -- kalau dipanggil sesaat setelah "Wajah dikenali"
                 // masih diucapkan, cancel() akan memotongnya di tengah kalimat dan
@@ -1910,26 +1907,125 @@
             setTimeout(() => speakAttendanceAnnouncement(nama, tipe), 550);
         }
 
-        // Suara manusia "Wajah dikenali, [Nama]" -- diucapkan LANGSUNG saat kamera
-        // baru saja mengenali seseorang (sebelum absennya selesai terkirim), supaya
-        // orang tersebut langsung dapat konfirmasi suara bahwa ia sudah dikenali.
-        function speakFaceRecognized(nama) {
+        // ---------- SUARA CEWEK (Text-to-Speech) ----------
+        // Memilih suara Bahasa Indonesia PEREMPUAN dari perangkat. Nama suara yang
+        // dikenal perempuan: Google "Bahasa Indonesia" (Chrome/Android), "Gadis"
+        // (Microsoft Edge/Windows), "Damayanti" (iPhone/iPad/Mac). Suara laki-laki
+        // seperti "Andika"/"Ardi" sengaja dihindari. Bila perangkat hanya punya
+        // satu suara Indonesia yang tidak bisa dipastikan gendernya, nada sedikit
+        // dinaikkan supaya terdengar lebih feminin.
+        const FEMALE_VOICE_NAME_RE = /gadis|damayanti|female|wanita|perempuan|woman|google.*(indonesia|bahasa)|bahasa indonesia/i;
+        const MALE_VOICE_NAME_RE = /andika|ardi|\bmale\b|\bman\b|pria|laki/i;
+
+        function applyFemaleVoice(utter) {
             try {
-                if (!('speechSynthesis' in window)) return;
-                const namaText = String(nama || '').trim();
-                if (!namaText) return;
-                const utter = new SpeechSynthesisUtterance(`Wajah dikenali, ${namaText}.`);
+                const voices = (cachedSpeechVoices && cachedSpeechVoices.length)
+                    ? cachedSpeechVoices
+                    : (window.speechSynthesis.getVoices() || []);
+                const idVoices = voices.filter(v => v.lang && /^id([-_]|$)/i.test(v.lang));
+                const knownFemale = idVoices.find(v => FEMALE_VOICE_NAME_RE.test(v.name) && !MALE_VOICE_NAME_RE.test(v.name));
+                const notMale = idVoices.find(v => !MALE_VOICE_NAME_RE.test(v.name));
+                const chosen = knownFemale || notMale || idVoices[0] || null;
+                if (chosen) utter.voice = chosen;
+                utter.pitch = knownFemale ? 1.1 : 1.3;
+            } catch (err) { /* pakai suara bawaan perangkat */ }
+        }
+
+        // Browser (Chrome/Safari) memblokir suara otomatis sebelum pengguna menyentuh
+        // layar sekali. Ucapan yang terblokir ditunda dan diputar pada sentuhan pertama.
+        const WELCOME_SPEECH_TEXT = 'Selamat datang di Absensi dan Kinerja, SMK Canda Bhirawa Pare. Silakan absen.';
+        const OUT_OF_GPS_SPEECH_TEXT = 'Anda di luar GPS.';
+        const OUT_OF_GPS_COOLDOWN_MS = 15000;   // jeda supaya "Anda di luar GPS" tidak diulang terus-menerus
+        let welcomeSpeechDone = false;
+        let welcomeAttemptAt = 0;
+        let gpsOutsideConfirmed = false;        // true bila GPS SUDAH terbaca dan posisi di luar radius kampus
+        let pendingOutOfGpsSpeech = false;
+        let lastOutOfGpsSpokenAt = 0;
+        let lastFaceRecognizedSpoken = { nama: '', at: 0 };
+
+        function speakFemale(text, handlers) {
+            try {
+                if (!('speechSynthesis' in window)) return false;
+                const utter = new SpeechSynthesisUtterance(text);
                 utter.lang = 'id-ID';
-                utter.rate = 1;
+                utter.rate = 0.95;
                 utter.pitch = 1;
                 utter.volume = 1;
-                const voices = cachedSpeechVoices.length ? cachedSpeechVoices : window.speechSynthesis.getVoices();
-                const idVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('id'));
-                if (idVoice) utter.voice = idVoice;
-                // TIDAK di-cancel() supaya kalau beberapa orang dikenali hampir
-                // bersamaan (rombongan), nama-nama tetap diucapkan berurutan, bukan
-                // saling memotong satu sama lain.
+                applyFemaleVoice(utter);
+                if (handlers && handlers.onstart) utter.onstart = handlers.onstart;
+                if (handlers && handlers.onerror) utter.onerror = handlers.onerror;
+                // Tanpa cancel() supaya beberapa kalimat berurutan tidak saling memotong.
                 window.speechSynthesis.speak(utter);
+                return true;
+            } catch (err) {
+                console.warn('Gagal memutar suara:', err);
+                return false;
+            }
+        }
+
+        function speakWelcomeGreeting() {
+            if (welcomeSpeechDone) return;
+            welcomeAttemptAt = Date.now();
+            try { window.speechSynthesis.cancel(); } catch (e) { /* abaikan */ }
+            speakFemale(WELCOME_SPEECH_TEXT, {
+                onstart: () => {
+                    welcomeSpeechDone = true;
+                    removeWelcomeGestureListeners();
+                },
+                onerror: () => { welcomeAttemptAt = 0; } // terblokir -> coba lagi saat sentuhan pertama
+            });
+            // Pengaman: sebagian browser (mis. iOS) memblokir tanpa memicu error.
+            setTimeout(() => { if (!welcomeSpeechDone) welcomeAttemptAt = 0; }, 2500);
+        }
+
+        function speakOutOfGps(force) {
+            const now = Date.now();
+            if (!force && (now - lastOutOfGpsSpokenAt) < OUT_OF_GPS_COOLDOWN_MS) return;
+            lastOutOfGpsSpokenAt = now;
+            speakFemale(OUT_OF_GPS_SPEECH_TEXT, {
+                onerror: (e) => { if (e && e.error === 'not-allowed') pendingOutOfGpsSpeech = true; }
+            });
+        }
+
+        function onFirstUserGestureForSpeech() {
+            if (!welcomeSpeechDone && (Date.now() - welcomeAttemptAt) > 2500) speakWelcomeGreeting();
+            if (pendingOutOfGpsSpeech && gpsOutsideConfirmed) {
+                pendingOutOfGpsSpeech = false;
+                speakOutOfGps(true);
+            }
+        }
+
+        const WELCOME_GESTURE_EVENTS = ['pointerdown', 'touchstart', 'keydown', 'click'];
+        function removeWelcomeGestureListeners() {
+            WELCOME_GESTURE_EVENTS.forEach(ev => document.removeEventListener(ev, onFirstUserGestureForSpeech, true));
+        }
+
+        // Dipanggil sekali saat aplikasi dibuka. Mencoba langsung bicara; kalau diblokir
+        // browser, ucapan selamat datang diputar begitu pengguna menyentuh layar.
+        function startWelcomeGreeting() {
+            if (!('speechSynthesis' in window)) return;
+            WELCOME_GESTURE_EVENTS.forEach(ev => document.addEventListener(ev, onFirstUserGestureForSpeech, true));
+            const go = () => speakWelcomeGreeting();
+            if ((window.speechSynthesis.getVoices() || []).length > 0) { go(); return; }
+            // Daftar suara sering baru terisi sesaat setelah halaman dibuka.
+            let fired = false;
+            const once = () => { if (fired) return; fired = true; go(); };
+            window.speechSynthesis.addEventListener('voiceschanged', once, { once: true });
+            setTimeout(once, 1500);
+        }
+
+        // Suara cewek "Anda adalah [Nama]" -- diucapkan saat wajah dikenali.
+        function speakFaceRecognized(nama) {
+            try {
+                const namaText = String(nama || '').trim();
+                if (!namaText) return;
+                // Cegah nama yang sama diucapkan dua kali beruntun (mis. auto-absen + verifikasi foto).
+                const now = Date.now();
+                if (lastFaceRecognizedSpoken.nama === namaText && (now - lastFaceRecognizedSpoken.at) < 6000) return;
+                lastFaceRecognizedSpoken = { nama: namaText, at: now };
+                // Tanpa cancel() supaya kalau beberapa orang dikenali hampir bersamaan
+                // (rombongan), nama-nama diucapkan berurutan, bukan saling memotong.
+                speakFemale(`Anda adalah ${namaText}.`);
             } catch (err) {
                 console.warn('Gagal memutar suara pengenalan wajah:', err);
             }
@@ -2374,6 +2470,7 @@
                 banner.className = 'absolute inset-x-0 top-0 z-30 bg-amber-500/95 text-white text-[11px] font-bold px-3 py-2 text-center';
                 textEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Wajah belum didaftarkan — absen otomatis nonaktif, daftarkan wajah dulu';
             } else if (state === 'out-of-range') {
+                if (gpsOutsideConfirmed) speakOutOfGps();
                 banner.className = 'absolute inset-x-0 top-0 z-30 bg-amber-500/95 text-white text-[11px] font-bold px-3 py-2 text-center';
                 textEl.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> Di luar radius lokasi sekolah, absen otomatis ditunda';
             } else if (state === 'no-face') {
@@ -2443,6 +2540,7 @@
                 const isMatch = distance <= FACE_MATCH_THRESHOLD;
 
                 if (isMatch) {
+                    if (faceMatchStreak === 0 && currentSession && currentSession.nama) speakFaceRecognized(currentSession.nama);
                     faceMatchStreak++;
                     updateAutoAttendanceBanner('matching', faceMatchStreak);
                     if (faceMatchStreak >= AUTO_ATTENDANCE_STREAK_REQUIRED) {
@@ -4042,6 +4140,8 @@ function focusAdminDeviceMarker(index) {
 
                         const isInside = distance <= ATTENDANCE_RADIUS_METERS;
                         isWithinAttendanceRadius = isInside;
+                        gpsOutsideConfirmed = !isInside;
+                        if (!isInside) speakOutOfGps();
 
                         if (isInside) {
                             gpsDisplay.innerHTML = `<span class="text-emerald-600 font-bold"><i class="fa-solid fa-circle-check"></i> Kampus terdeteksi: ${selectedSchoolName}</span><br><span class="text-xs text-slate-500 font-medium">GPS: ${globalCoordinates} | Jarak: ${globalDistance} | Maksimal: ${ATTENDANCE_RADIUS_METERS} m</span><br><span class="text-[10px] text-emerald-600 font-bold">Kampus terdekat dipilih otomatis • Area presensi valid</span>`;
@@ -4056,6 +4156,7 @@ function focusAdminDeviceMarker(index) {
                     (error) => {
                         console.warn("GPS Location block: ", error);
                         isWithinAttendanceRadius = false;
+                        gpsOutsideConfirmed = false;
 
                         if (IS_PREVIEW) {
                             // Simulasi hanya di mode preview, bukan pada aplikasi produksi.
@@ -4674,6 +4775,7 @@ function focusAdminDeviceMarker(index) {
                     // Wajah cocok -> foto absen ini ikut dipakai sebagai data latih tambahan
                     // untuk memperbarui Wajah Referensi Presensi (berjalan diam-diam di background).
                     trainFaceReferenceFromAttendance_(liveDescriptor).catch(() => {});
+                    if (currentSession && currentSession.nama) speakFaceRecognized(currentSession.nama);
                 }
             } else {
                 // Guru ini belum pernah punya Wajah Referensi Presensi -> foto absen live saat
@@ -4737,6 +4839,7 @@ function focusAdminDeviceMarker(index) {
             if (!isWithinAttendanceRadius) {
                 input.value = '';
                 showToast('Anda berada di luar radius lokasi sekolah, absen dari foto tidak dapat dikirim.', 'error');
+                speakOutOfGps();
                 return;
             }
 
@@ -7334,6 +7437,7 @@ function applyDateFilters() {
             }
             
             initializeMockData();
+            startWelcomeGreeting();
             requestUserLocation();
         };
 		// Fungsi Penanganan Form Ganti Password
