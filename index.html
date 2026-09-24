@@ -509,7 +509,7 @@
                             </button>
                         </div>
                         <p id="pulang-time-info" class="text-[10px] text-center text-amber-600 font-semibold -mt-2">
-                            <i class="fa-solid fa-clock"></i> Tombol Pulang aktif mulai pukul 14.00 WIB.
+                            <i class="fa-solid fa-clock"></i> Tombol Pulang aktif mulai pukul 15.00 WIB.
                         </p>
 
                         <!-- Kampus dipilih otomatis dari GPS berdasarkan lokasi terdekat -->
@@ -1467,7 +1467,7 @@
         //  SAKLAR DEPLOYMENT & KONFIGURASI UTAMA
         // ==========================================
         const IS_PREVIEW = false; 
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbztf74NLPIajqJddhgjGNYM8be7cXywvcWEi9dbLpTm-U3j09hIMPbcyCxAoe6bYsjQ/exec";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbzbk9G5MJvGJgvLeDT79_DsQSKw21VE4uVIlXwl6VLC0Em_z_Z0sZTYFmvINXCDrxvR/exec";
         const ATTENDANCE_RADIUS_METERS = 200;
 
         // State Global Aplikasi
@@ -1476,7 +1476,8 @@
         let kioskFaceDatabase = []; // [{nip, nama, descriptor}] -- dimuat saat masuk Mode Kiosk, dipakai untuk pencocokan 1:N di browser
         let kioskIdentified = null; // {nip, nama, distance} guru yang terakhir dikenali di Mode Kiosk
         let kioskLastSubmitByNip = {}; // nip -> timestamp terakhir dicoba absen (jeda PER ORANG, bukan global) supaya tidak dobel
-        const KIOSK_PER_PERSON_COOLDOWN_MS = 15000; // 15 detik jeda per guru yang sama sebelum dicoba absen lagi di kiosk 
+        const KIOSK_PER_PERSON_COOLDOWN_MS = 15000; // 15 detik jeda per guru yang sama sebelum dicoba absen lagi di kiosk
+        let kioskPreviouslyDetectedNips = new Set(); // dipakai supaya "Wajah dikenali, [Nama]" hanya diucapkan sekali per kemunculan, tidak diulang tiap tick 
         let mockAttendanceDb = [];
         let mockJurnalDb = [];
         let mockUsersDb = [];
@@ -1833,6 +1834,87 @@
                 playTone(1174.66, now + 0.15, 0.32, 0.9);
             } catch (err) {
                 console.warn('Gagal memutar suara notifikasi absen:', err);
+            }
+        }
+
+        // Sebagian browser mewajibkan aksi klik pengguna sebelum text-to-speech
+        // pertama kali diizinkan berbunyi -- fungsi ini dipanggil saat ada klik
+        // (Login / masuk Mode Kiosk) untuk "membuka kunci" itu di awal.
+        function unlockSpeechSynthesis() {
+            try {
+                if (!('speechSynthesis' in window)) return;
+                const primer = new SpeechSynthesisUtterance(' ');
+                primer.volume = 0;
+                window.speechSynthesis.speak(primer);
+            } catch (err) { /* abaikan */ }
+        }
+
+        // Cache daftar suara Text-to-Speech perangkat -- di banyak browser daftar ini
+        // baru terisi secara asinkron setelah event 'voiceschanged' pertama kali.
+        let cachedSpeechVoices = [];
+        if ('speechSynthesis' in window) {
+            const refreshVoices = () => { cachedSpeechVoices = window.speechSynthesis.getVoices() || []; };
+            refreshVoices();
+            window.speechSynthesis.onvoiceschanged = refreshVoices;
+        }
+
+        // Suara MANUSIA (Text-to-Speech) mengumumkan "Absen Masuk/Pulang berhasil"
+        // beserta nama guru, memakai suara Bahasa Indonesia perangkat kalau tersedia.
+        function speakAttendanceAnnouncement(nama, tipe) {
+            try {
+                if (!('speechSynthesis' in window)) return;
+                const namaText = String(nama || '').trim();
+                const text = tipe === 'Pulang'
+                    ? `Absen pulang berhasil.${namaText ? ' Terima kasih, ' + namaText + '.' : ''}`
+                    : `Absen masuk berhasil.${namaText ? ' Selamat bekerja, ' + namaText + '.' : ''}`;
+
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'id-ID';
+                utter.rate = 0.95;
+                utter.pitch = 1;
+                utter.volume = 1;
+
+                const voices = cachedSpeechVoices.length ? cachedSpeechVoices : window.speechSynthesis.getVoices();
+                const idVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('id'));
+                if (idVoice) utter.voice = idVoice;
+
+                window.speechSynthesis.cancel(); // hentikan ucapan sebelumnya kalau masih berjalan
+                window.speechSynthesis.speak(utter);
+            } catch (err) {
+                console.warn('Gagal memutar suara manusia (text-to-speech):', err);
+            }
+        }
+
+        // Gabungan: nada notifikasi keras + suara manusia mengumumkan nama & jenis
+        // absen. Dipanggil setiap kali Absen Masuk/Pulang berhasil tersimpan.
+        function announceAttendanceSuccess(nama, tipe) {
+            playAttendanceSuccessSound();
+            // Jeda singkat supaya suara ucapan tidak tumpang tindih dengan nada bunyi.
+            setTimeout(() => speakAttendanceAnnouncement(nama, tipe), 550);
+        }
+
+        // Suara manusia "Wajah dikenali, [Nama]" -- diucapkan LANGSUNG saat kamera
+        // baru saja mengenali seseorang (sebelum absennya selesai terkirim), supaya
+        // orang tersebut langsung dapat konfirmasi suara bahwa ia sudah dikenali.
+        function speakFaceRecognized(nama) {
+            try {
+                if (!('speechSynthesis' in window)) return;
+                const namaText = String(nama || '').trim();
+                if (!namaText) return;
+                const utter = new SpeechSynthesisUtterance(`Wajah dikenali, ${namaText}.`);
+                utter.lang = 'id-ID';
+                utter.rate = 1;
+                utter.pitch = 1;
+                utter.volume = 1;
+                const voices = cachedSpeechVoices.length ? cachedSpeechVoices : window.speechSynthesis.getVoices();
+                const idVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('id'));
+                if (idVoice) utter.voice = idVoice;
+                // TIDAK di-cancel() supaya kalau beberapa orang dikenali hampir
+                // bersamaan (rombongan), nama-nama tetap diucapkan berurutan, bukan
+                // saling memotong satu sama lain.
+                window.speechSynthesis.speak(utter);
+            } catch (err) {
+                console.warn('Gagal memutar suara pengenalan wajah:', err);
             }
         }
 
@@ -2392,12 +2474,14 @@
 
             if (!isWithinAttendanceRadius) {
                 faceMatchStreak = 0;
+                kioskPreviouslyDetectedNips.clear();
                 renderKioskDetectedPeople([]);
                 updateAutoAttendanceBanner('out-of-range');
                 return;
             }
             if (!isFaceDetected) {
                 faceMatchStreak = 0;
+                kioskPreviouslyDetectedNips.clear();
                 renderKioskDetectedPeople([]);
                 updateAutoAttendanceBanner('no-face');
                 return;
@@ -2408,6 +2492,17 @@
             // yang terdeteksi di layar kamera saat ini (live, tiap tick).
             const { list: liveList, ambiguousNames: liveAmbiguous } = await identifyFacesInCurrentFrame();
             renderKioskDetectedPeople(liveList, liveAmbiguous);
+
+            // Ucapkan "Wajah dikenali, [Nama]" hanya untuk wajah yang BARU muncul
+            // (belum diumumkan di tick sebelumnya) -- supaya tidak diulang-ulang
+            // setiap 0,7 detik selagi orang yang sama masih berdiri di kamera.
+            const currentNips = new Set(liveList.map(p => p.nip));
+            liveList.forEach(p => {
+                if (!kioskPreviouslyDetectedNips.has(p.nip)) {
+                    speakFaceRecognized(p.nama);
+                }
+            });
+            kioskPreviouslyDetectedNips = currentNips;
 
             faceMatchStreak++;
             updateAutoAttendanceBanner('matching', faceMatchStreak);
@@ -2574,7 +2669,7 @@
         }
 
         // Kirim absen rombongan (bisa 1 orang atau banyak sekaligus dari satu foto)
-        // ke server. Aturan lama (radius lokasi, jam Pulang mulai 14.00 WIB, satu
+        // ke server. Aturan lama (radius lokasi, jam Pulang mulai 15.00 WIB, satu
         // kali per hari per guru) tetap divalidasi ulang di server.
         function submitKioskGroupAttendance(identifiedList) {
             // Catatan: jeda anti-dobel di kiosk sudah ditangani PER ORANG di
@@ -2585,7 +2680,7 @@
 
             const tipeVal = document.querySelector('input[name="tipe_absen"]:checked')?.value || 'Masuk';
             if (tipeVal === 'Pulang' && !isPulangTimeAllowed()) {
-                showToast('Absen Pulang baru dapat dilakukan mulai pukul 14.00 WIB.', 'error');
+                showToast('Absen Pulang baru dapat dilakukan mulai pukul 15.00 WIB.', 'error');
                 resetKioskAutoLoopState();
                 resetKioskIdentityFields();
                 return;
@@ -2630,7 +2725,12 @@
                             : `Tidak ada yang tersimpan baru (semua sudah absen ${tipeVal} hari ini).`;
                         if (skipped.length) msg += ` — ${skipped.length} dilewati (sudah absen): ${skipped.map(x => x.nama).join(', ')}`;
                         showToast(msg, inserted.length ? 'success' : 'error');
-                        if (inserted.length) playAttendanceSuccessSound();
+                        if (inserted.length === 1) {
+                            announceAttendanceSuccess(inserted[0].nama, tipeVal);
+                        } else if (inserted.length > 1) {
+                            playAttendanceSuccessSound();
+                            setTimeout(() => speakAttendanceAnnouncement(`${inserted.length} guru: ${inserted.map(x => x.nama).join(', ')}`, tipeVal), 550);
+                        }
                         resetPresensiForm();
                     } else {
                         showToast(result.message || 'Absen rombongan gagal disimpan.', 'error');
@@ -3194,6 +3294,7 @@
 
         function loginSuccess() {
             getAudioCtx(); // unlock audio (dipicu klik tombol Login) supaya bunyi notifikasi absen tidak diblokir browser
+            unlockSpeechSynthesis();
             showToast(`Selamat datang kembali, ${currentSession.nama}!`, "success");
             fetchEnrolledFaceDescriptor(); // cek status wajah referensi guru ini, siap dipakai saat presensi
             
@@ -3306,7 +3407,7 @@
         // pencocokan 1:N dilakukan LANGSUNG di browser (real-time, sehingga NIP & Nama
         // guru langsung tampil di formulir begitu wajahnya dikenali), lalu server tetap
         // memverifikasi ulang & mencatat presensi Masuk/Pulang ke database Presensi --
-        // aturan lama (radius lokasi, jam Pulang mulai 14.00 WIB, satu kali per hari)
+        // aturan lama (radius lokasi, jam Pulang mulai 15.00 WIB, satu kali per hari)
         // tetap berlaku sepenuhnya.
         async function fetchKioskFaceDatabase() {
             if (IS_PREVIEW) {
@@ -3368,11 +3469,13 @@
 
         function enterKioskMode() {
             getAudioCtx(); // unlock audio (dipicu klik tombol Absen Wajah) supaya bunyi notifikasi absen tidak diblokir browser
+            unlockSpeechSynthesis();
             currentSession = { username: 'kiosk', nama: 'Mode Kiosk (Semua Guru)', nip: '', role: 'Kiosk' };
             isKioskMode = true;
             pulangAutoSwitchDone = false;
             kioskIdentified = null;
             kioskLastSubmitByNip = {};
+            kioskPreviouslyDetectedNips = new Set();
             fetchEnrolledFaceDescriptor();
             fetchKioskFaceDatabase();
 
@@ -4391,7 +4494,7 @@ function focusAdminDeviceMarker(index) {
 
         function isPulangTimeAllowed() {
             const nowWib = getWibTimeParts();
-            return nowWib.hour >= 14;
+            return nowWib.hour >= 15;
         }
 
         // Setelah pukul 15.00 WIB, form presensi otomatis diarahkan ke tab Pulang
@@ -4418,7 +4521,7 @@ function focusAdminDeviceMarker(index) {
             if (!input) return;
 
             if (type === 'Pulang' && !isPulangTimeAllowed()) {
-                showToast('Absen Pulang baru dapat dilakukan mulai pukul 14.00 WIB.', 'error');
+                showToast('Absen Pulang baru dapat dilakukan mulai pukul 15.00 WIB.', 'error');
                 return;
             }
 
@@ -4464,7 +4567,7 @@ function focusAdminDeviceMarker(index) {
                 return;
             }
             if (selectedTipe === 'Pulang' && !isPulangTimeAllowed()) {
-                showToast('Absen Pulang baru aktif mulai pukul 14.00 WIB.', 'error');
+                showToast('Absen Pulang baru aktif mulai pukul 15.00 WIB.', 'error');
                 return;
             }
             if (!cameraActive || !isFaceDetected) {
@@ -4605,7 +4708,7 @@ function focusAdminDeviceMarker(index) {
             }
             if (selectedTipe === 'Pulang' && !isPulangTimeAllowed()) {
                 input.value = '';
-                showToast('Absen Pulang baru aktif mulai pukul 14.00 WIB.', 'error');
+                showToast('Absen Pulang baru aktif mulai pukul 15.00 WIB.', 'error');
                 return;
             }
             if (!isWithinAttendanceRadius) {
@@ -4729,7 +4832,7 @@ function focusAdminDeviceMarker(index) {
                 btnPulang.innerHTML = hasPulang
                     ? '<i class="fa-solid fa-circle-check mb-1 block text-lg"></i> Sudah Pulang'
                     : !pulangAllowed
-                        ? '<i class="fa-solid fa-lock mb-1 block text-lg"></i> Pulang 14.00 WIB'
+                        ? '<i class="fa-solid fa-lock mb-1 block text-lg"></i> Pulang 15.00 WIB'
                         : '<i class="fa-solid fa-right-from-bracket mb-1 block text-lg"></i> Pulang';
             }
 
@@ -4739,7 +4842,7 @@ function focusAdminDeviceMarker(index) {
                     pulangInfo.innerHTML = '<i class="fa-solid fa-unlock"></i> Tombol Pulang sudah aktif.';
                 } else {
                     pulangInfo.className = 'text-[10px] text-center text-amber-600 font-semibold -mt-2';
-                    pulangInfo.innerHTML = '<i class="fa-solid fa-clock"></i> Tombol Pulang aktif mulai pukul 14.00 WIB.';
+                    pulangInfo.innerHTML = '<i class="fa-solid fa-clock"></i> Tombol Pulang aktif mulai pukul 15.00 WIB.';
                 }
             }
         }
@@ -4774,7 +4877,7 @@ function focusAdminDeviceMarker(index) {
             if (pulangBelumAktif) {
                 capturePhotoBtn.disabled = true;
                 capturePhotoBtn.className = 'w-full bg-slate-200 text-slate-400 py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-not-allowed';
-                capturePhotoBtn.innerHTML = '<i class="fa-solid fa-clock"></i> Pulang Aktif 14.00 WIB';
+                capturePhotoBtn.innerHTML = '<i class="fa-solid fa-clock"></i> Pulang Aktif 15.00 WIB';
 
                 submitPresensiBtn.disabled = true;
                 submitPresensiBtn.className = 'w-full bg-slate-200 text-slate-400 py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-not-allowed';
@@ -4843,7 +4946,7 @@ function focusAdminDeviceMarker(index) {
 
             const selectedTipe = document.querySelector('input[name="tipe_absen"]:checked')?.value || 'Masuk';
             if (selectedTipe === 'Pulang' && !isPulangTimeAllowed()) {
-                showToast("Absen Pulang baru dapat dilakukan mulai pukul 14.00 WIB.", "error");
+                showToast("Absen Pulang baru dapat dilakukan mulai pukul 15.00 WIB.", "error");
                 return;
             }
 
@@ -4964,7 +5067,7 @@ checkTodayAttendanceStatus();
                         updateDashboardStats();
 
                         showDialog("Presensi Berhasil (Demo)", `Presensi ${tipeVal} di cabang ${selectedSchoolName} berhasil didaftarkan secara lokal! Koordinat perangkat Anda (${payload.lokasi}) tercatat di sistem.`, "success");
-                        playAttendanceSuccessSound();
+                        announceAttendanceSuccess(payload.nama, tipeVal);
                         resetPresensiForm();
                     }, 1000);
                 } else {
@@ -5008,7 +5111,7 @@ checkTodayAttendanceStatus();
                             }
 
                             showDialog("Presensi Sukses", `Absensi ${tipeVal} Anda di cabang ${selectedSchoolName} berhasil tersimpan di Google Sheet! Koordinat perangkat (${payload.lokasi}) tervalidasi.`, "success");
-                            playAttendanceSuccessSound();
+                            announceAttendanceSuccess(payload.nama, tipeVal);
                             resetPresensiForm();
                         } else {
                             // Menampilkan pesan kesalahan dari respons backend (seperti duplikasi absen)
@@ -5041,6 +5144,7 @@ checkTodayAttendanceStatus();
         // terakhir, supaya formulir siap dipakai guru berikutnya.
         function resetKioskIdentityFields() {
             kioskIdentified = null;
+            kioskPreviouslyDetectedNips = new Set();
             const nipField = document.getElementById('presensi-nip');
             const namaField = document.getElementById('presensi-nama');
             if (nipField) nipField.value = 'Dikenali otomatis dari wajah';
@@ -5093,7 +5197,7 @@ checkTodayAttendanceStatus();
                     localStorage.setItem('mock_presensi', JSON.stringify(mockAttendanceDb));
 
                     showToast(`${best.nama} — Absen ${payload.tipe} berhasil dicatat (mode demo lokal).`, 'success');
-                    playAttendanceSuccessSound();
+                    announceAttendanceSuccess(best.nama, payload.tipe);
                     resetKioskIdentityFields();
                     resetPresensiForm();
                 }, 1000);
@@ -5117,7 +5221,7 @@ checkTodayAttendanceStatus();
 
                 if (response.success) {
                     showToast(`${response.nama || payload.nama} — Absen ${response.tipe || payload.tipe} berhasil dicatat pukul ${ctx.timestamp.toLocaleTimeString('id-ID')} WIB.`, 'success');
-                    playAttendanceSuccessSound();
+                    announceAttendanceSuccess(response.nama || payload.nama, response.tipe || payload.tipe);
                     resetKioskIdentityFields();
                     resetPresensiForm();
                 } else {
@@ -7831,7 +7935,7 @@ function checkTodayAttendanceStatus() {
 
     let selectedTipe = document.querySelector('input[name="tipe_absen"]:checked')?.value || 'Masuk';
 
-    // Sebelum 14.00 WIB, pilihan Pulang tidak boleh tetap aktif.
+    // Sebelum 15.00 WIB, pilihan Pulang tidak boleh tetap aktif.
     if (selectedTipe === 'Pulang' && !isPulangTimeAllowed()) {
         const masukInput = document.getElementById('tipe-absen-masuk');
         if (masukInput) masukInput.checked = true;
@@ -7842,7 +7946,7 @@ function checkTodayAttendanceStatus() {
     return (selectedTipe === 'Masuk' && hasMasuk) || (selectedTipe === 'Pulang' && hasPulang);
 }
 
-// Memperbarui status tombol Pulang otomatis ketika melewati pukul 14.00 WIB.
+// Memperbarui status tombol Pulang otomatis ketika melewati pukul 15.00 WIB.
 setInterval(() => {
     if (currentSession) updatePresensiButtonState();
 }, 30000);
